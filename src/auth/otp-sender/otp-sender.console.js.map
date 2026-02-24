@@ -1,0 +1,1 @@
+{"version":3,"file":"otp-sender.console.js","sourceRoot":"","sources":["otp-sender.console.ts"],"names":[],"mappings":";AAEA,MAAM,OAAO,gBAAgB;IACrB,OAAO,CAAC,WAAmB,EAAE,IAAY;;YAC7C,sCAAsC;YACtC,OAAO,CAAC,GAAG,CAAC,cAAc,WAAW,OAAO,IAAI,EAAE,CAAC,CAAC;QACtD,CAAC;KAAA;CACF"}
