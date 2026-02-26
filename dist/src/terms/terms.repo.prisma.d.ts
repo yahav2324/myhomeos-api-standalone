@@ -22,20 +22,7 @@ export declare class TermsRepoPrisma {
         lang: string;
         limit: number;
         userId?: string | null;
-    }): Promise<{
-        id: string;
-        text: string;
-        normalized: string;
-        status: import(".prisma/client").$Enums.TermStatus;
-        upCount: number;
-        downCount: number;
-        myVote: import(".prisma/client").$Enums.VoteValue;
-        category: import(".prisma/client").$Enums.ShoppingCategory;
-        unit: string;
-        qty: number;
-        extras: any;
-        imageUrl: any;
-    }[]>;
+    }): Promise<any[]>;
     createTerm(args: {
         scope: TermScope;
         ownerUserId?: string | null;
@@ -96,6 +83,7 @@ export declare class TermsRepoPrisma {
         extras: import("@prisma/client/runtime/client").JsonValue | null;
         userId: string;
         termId: string;
+        imageUrl: string | null;
     }>;
     findTermById(termId: string): Promise<{
         translations: {

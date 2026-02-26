@@ -1,6 +1,6 @@
-import { PrismaService } from '../prisma/prisma.service';
-import { ShoppingCategory } from '@smart-kitchen/contracts';
-type ApiUnit = 'PCS' | 'G' | 'KG' | 'ML' | 'L';
+import { PrismaService } from "../prisma/prisma.service";
+import { ShoppingCategory } from "@smart-kitchen/contracts";
+type ApiUnit = "PCS" | "G" | "KG" | "ML" | "L";
 export declare class ShoppingService {
     private readonly prisma;
     constructor(prisma: PrismaService);
@@ -79,10 +79,9 @@ export declare class ShoppingService {
         data: {
             unit: import(".prisma/client").$Enums.ShoppingUnit;
             id: string;
-            createdAt: Date;
-            updatedAt: Date;
             category: import(".prisma/client").$Enums.ShoppingCategory;
             qty: number;
+            termId: string;
             text: string;
             imageUrl: string;
             checked: boolean;

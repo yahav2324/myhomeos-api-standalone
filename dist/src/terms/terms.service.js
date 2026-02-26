@@ -18,19 +18,19 @@ const contracts_1 = require("../../internal-libs/contracts/src/index");
 const CreateTermBodySchema = zod_1.z.object({
     text: zod_1.z.string().min(1).max(80),
     lang: zod_1.z.string().min(2).max(10).optional(),
-    scope: zod_1.z.enum(['GLOBAL', 'PRIVATE']).optional(),
+    scope: zod_1.z.enum(["GLOBAL", "PRIVATE"]).optional(),
     category: zod_1.z.nativeEnum(client_1.ShoppingCategory).optional(),
     unit: zod_1.z.nativeEnum(client_1.ShoppingUnit).optional(),
     qty: zod_1.z.number().positive().optional(),
     extras: zod_1.z.record(zod_1.z.string(), zod_1.z.string()).optional(),
-    imageUrl: zod_1.z.string().url().optional(),
+    imageUrl: zod_1.z.string().optional().nullable(),
     defaultCategory: zod_1.z.nativeEnum(client_1.ShoppingCategory).optional(),
     defaultUnit: zod_1.z.nativeEnum(client_1.ShoppingUnit).optional(),
     defaultQty: zod_1.z.number().positive().optional(),
     defaultExtras: zod_1.z.record(zod_1.z.string(), zod_1.z.string()).optional(),
 });
 const VoteBodySchema = zod_1.z.object({
-    vote: zod_1.z.enum(['UP', 'DOWN']),
+    vote: zod_1.z.enum(["UP", "DOWN"]),
 });
 const DEFAULT_CATALOG_CONFIG = {
     minQueryChars: 2,
@@ -43,10 +43,10 @@ function normalizeText(s) {
 function detectLang(text) {
     const t = text.trim();
     if (/[֐-׿]/.test(t))
-        return 'he';
+        return "he";
     if (/[a-zA-Z]/.test(t))
-        return 'en';
-    return 'und';
+        return "en";
+    return "und";
 }
 async function translateToEnglish(text, fromLang) {
     void text;
@@ -58,9 +58,11 @@ let TermsService = class TermsService {
         this.repo = repo;
     }
     async getCatalogConfig() {
-        const row = await this.repo.getSystemConfig('catalog');
-        if (!row?.json || typeof row.json !== 'object') {
-            await this.repo.upsertSystemConfig('catalog', { catalog: DEFAULT_CATALOG_CONFIG });
+        const row = await this.repo.getSystemConfig("catalog");
+        if (!row?.json || typeof row.json !== "object") {
+            await this.repo.upsertSystemConfig("catalog", {
+                catalog: DEFAULT_CATALOG_CONFIG,
+            });
             return DEFAULT_CATALOG_CONFIG;
         }
         const obj = row.json;
@@ -74,9 +76,9 @@ let TermsService = class TermsService {
     async setTermImage(termId, imageUrl, userId) {
         const term = await this.repo.findTermById(termId);
         if (!term)
-            throw new common_1.NotFoundException('Term not found');
+            throw new common_1.NotFoundException("Term not found");
         if (term.scope === client_1.TermScope.PRIVATE && term.ownerUserId !== userId) {
-            throw new common_1.BadRequestException('Not authorized to change image of this term');
+            throw new common_1.BadRequestException("Not authorized to change image of this term");
         }
         const updated = await this.repo.setTermImage(termId, imageUrl);
         return { ok: true, data: updated };
@@ -87,7 +89,7 @@ let TermsService = class TermsService {
         if (qTrim.length < cfg.minQueryChars)
             return [];
         const qNorm = normalizeText(qTrim);
-        const lang = (args.lang || 'en').trim().toLowerCase();
+        const lang = (args.lang || "en").trim().toLowerCase();
         const limit = Math.min(Math.max(args.limit || 10, 1), 30);
         return this.repo.suggest({ qNorm, lang, limit, userId: args.userId });
     }
@@ -96,35 +98,39 @@ let TermsService = class TermsService {
         if (!parsed.success)
             throw new common_1.BadRequestException(parsed.error.flatten());
         const text = parsed.data.text.trim();
-        const lang = (parsed.data.lang?.trim() || detectLang(text) || 'und').toLowerCase();
-        const scope = (parsed.data.scope ?? 'GLOBAL');
+        const lang = (parsed.data.lang?.trim() ||
+            detectLang(text) ||
+            "und").toLowerCase();
+        const scope = (parsed.data.scope ?? "GLOBAL");
         const cat = parsed.data.defaultCategory ?? parsed.data.category ?? null;
         const unit = parsed.data.defaultUnit ?? parsed.data.unit ?? null;
         const qty = parsed.data.defaultQty ?? parsed.data.qty ?? null;
         const extras = parsed.data.defaultExtras ?? parsed.data.extras ?? null;
         const imageUrl = parsed.data.imageUrl ?? null;
         const term = await this.repo.createTerm({
-            scope: scope === 'PRIVATE' ? client_1.TermScope.PRIVATE : client_1.TermScope.GLOBAL,
-            ownerUserId: scope === 'PRIVATE' ? userId : null,
-            status: scope === 'PRIVATE' ? client_1.TermStatus.PENDING : client_1.TermStatus.LIVE,
-            translations: [{ lang, text, normalized: normalizeText(text), source: 'USER' }],
+            scope: scope === "PRIVATE" ? client_1.TermScope.PRIVATE : client_1.TermScope.GLOBAL,
+            ownerUserId: scope === "PRIVATE" ? userId : null,
+            status: scope === "PRIVATE" ? client_1.TermStatus.PENDING : client_1.TermStatus.LIVE,
+            translations: [
+                { lang, text, normalized: normalizeText(text), source: "USER" },
+            ],
             imageUrl,
             defaultCategory: cat,
             defaultUnit: unit,
             defaultQty: qty,
             defaultExtras: extras,
         });
-        const hasEn = term.translations.some((t) => t.lang === 'en');
-        if (!hasEn && lang !== 'en') {
+        const hasEn = term.translations.some((t) => t.lang === "en");
+        if (!hasEn && lang !== "en") {
             try {
                 const en = await translateToEnglish(text, lang);
                 if (en && en.trim().length > 0) {
                     await this.repo.addTranslation({
                         termId: term.id,
-                        lang: 'en',
+                        lang: "en",
                         text: en.trim(),
                         normalized: normalizeText(en),
-                        source: 'AUTO',
+                        source: "AUTO",
                     });
                 }
             }
@@ -143,7 +149,7 @@ let TermsService = class TermsService {
             throw new common_1.BadRequestException(parsed.error.flatten());
         const term = await this.repo.findTermById(termId);
         if (!term)
-            throw new common_1.NotFoundException('Term not found');
+            throw new common_1.NotFoundException("Term not found");
         const d = parsed.data;
         const row = await this.repo.upsertMyDefaults({
             termId,
@@ -161,11 +167,11 @@ let TermsService = class TermsService {
             throw new common_1.BadRequestException(parsed.error.flatten());
         const term = await this.repo.findTermById(termId);
         if (!term)
-            throw new common_1.NotFoundException('Term not found');
+            throw new common_1.NotFoundException("Term not found");
         await this.repo.upsertVote({
             termId,
             userId,
-            vote: parsed.data.vote === 'UP' ? client_1.VoteValue.UP : client_1.VoteValue.DOWN,
+            vote: parsed.data.vote === "UP" ? client_1.VoteValue.UP : client_1.VoteValue.DOWN,
         });
         const cfg = await this.getCatalogConfig();
         const counts = await this.repo.getVoteCounts(termId);
@@ -186,7 +192,8 @@ let TermsService = class TermsService {
             approvedAt = null;
         }
         else {
-            newStatus = term.scope === client_1.TermScope.PRIVATE ? client_1.TermStatus.PENDING : client_1.TermStatus.LIVE;
+            newStatus =
+                term.scope === client_1.TermScope.PRIVATE ? client_1.TermStatus.PENDING : client_1.TermStatus.LIVE;
             approvedAt = null;
         }
         const updated = await this.repo.updateTermStatus(termId, newStatus, approvedAt);

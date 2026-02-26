@@ -19,6 +19,10 @@ const unitToApi = (u: any): string | null => {
   return null;
 };
 
+function localNormalize(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, "_");
+}
+
 @Injectable()
 export class TermsRepoPrisma {
   constructor(private readonly prisma: PrismaService) {}
@@ -36,8 +40,6 @@ export class TermsRepoPrisma {
     });
   }
 
-  // ---- Suggest ----
-  // ---- Suggest ----
   async suggest(args: {
     qNorm: string;
     lang: string;
@@ -49,13 +51,10 @@ export class TermsRepoPrisma {
 
     const baseTermWhere = {
       OR: [
-        // ✅ גלובליים שנראים לכולם
         {
           scope: TermScope.GLOBAL,
           status: { in: [TermStatus.LIVE, TermStatus.APPROVED] },
         },
-
-        // ✅ PENDING/PRIVATE נראה רק ליוצר
         args.userId
           ? {
               scope: TermScope.PRIVATE,
@@ -65,8 +64,6 @@ export class TermsRepoPrisma {
               },
             }
           : undefined,
-
-        // ✅ אם תרצה שגם PENDING גלובלי יראה רק ליוצר (לריסאבמיט)
         args.userId
           ? {
               scope: TermScope.GLOBAL,
@@ -77,7 +74,22 @@ export class TermsRepoPrisma {
       ].filter(Boolean) as any,
     };
 
-    // ✅ שלב 1: startsWith (מהיר + הכי רלוונטי)
+    const termInclude = {
+      term: {
+        select: {
+          id: true,
+          scope: true,
+          ownerUserId: true,
+          status: true,
+          imageUrl: true,
+          approvedByAdmin: true,
+          translations: { select: { lang: true, text: true } },
+          brandImages: true,
+        },
+      },
+    };
+
+    // שלב 1: startsWith
     const starts = await this.prisma.termTranslation.findMany({
       where: {
         lang: args.lang,
@@ -85,23 +97,11 @@ export class TermsRepoPrisma {
         term: baseTermWhere as any,
       },
       take: args.limit * 4,
-      include: {
-        term: {
-          select: {
-            id: true,
-            scope: true,
-            ownerUserId: true,
-            status: true,
-            imageUrl: true, // ✅ הוסף
-            approvedByAdmin: true,
-            translations: { select: { lang: true, text: true } },
-          },
-        },
-      },
+      include: termInclude,
       orderBy: [{ normalized: "asc" }],
     });
 
-    // ✅ שלב 2: contains (רק אם חסר תוצאות) — מאפשר "אבקת שום"
+    // שלב 2: contains (במידה וחסר)
     const needMore = starts.length < args.limit;
     const contains =
       needMore && qNorm.length >= 2
@@ -111,27 +111,13 @@ export class TermsRepoPrisma {
               normalized: { contains: qNorm },
               term: baseTermWhere as any,
             },
-            take: args.limit * 12, // contains רחב יותר
-            include: {
-              term: {
-                select: {
-                  id: true,
-                  scope: true,
-                  ownerUserId: true,
-                  status: true,
-                  imageUrl: true, // ✅ הוסף
-                  approvedByAdmin: true,
-                  translations: { select: { lang: true, text: true } },
-                },
-              },
-            },
+            take: args.limit * 12,
+            include: termInclude,
             orderBy: [{ normalized: "asc" }],
           })
         : [];
 
-    // מאחדים: starts קודם, ואז contains (כולל כפילויות אפשריות)
     const matches = [...starts, ...contains];
-
     const termIds = Array.from(new Set(matches.map((m) => m.termId)));
     if (termIds.length === 0) return [];
 
@@ -144,6 +130,7 @@ export class TermsRepoPrisma {
             unit: true,
             qty: true,
             extras: true,
+            imageUrl: true,
           },
         })
       : [];
@@ -174,10 +161,13 @@ export class TermsRepoPrisma {
     const myVoteByTerm = new Map<string, VoteValue>();
     for (const v of myVotes) myVoteByTerm.set(v.termId, v.vote);
 
-    // ✅ החזרה בפורמט שה-Autocomplete שלך מצפה
-    const out = matches.map((m) => {
+    // --- בניית הרשימה המשוטחת (Base + Brands) ---
+    const out: any[] = [];
+
+    for (const m of matches) {
       const t = m.term;
       const c = countsByTerm.get(t.id) ?? { up: 0, down: 0 };
+      const d = args.userId ? myDefaultsByTerm.get(t.id) : null;
 
       const textLang =
         t.translations.find((x) => x.lang === args.lang)?.text ??
@@ -185,33 +175,51 @@ export class TermsRepoPrisma {
         t.translations[0]?.text ??
         m.text;
 
-      const d = args.userId ? myDefaultsByTerm.get(t.id) : null;
-
-      return {
+      // 1. הוספת מוצר הבסיס (למשל: "חלב")
+      out.push({
         id: t.id,
         text: textLang,
-        normalized: m.normalized, // ✅ חשוב ל-rank
+        normalized: m.normalized,
         status: t.status,
         upCount: c.up,
         downCount: c.down,
         myVote: args.userId ? (myVoteByTerm.get(t.id) ?? null) : null,
-
-        // ✅ defaults *פר משתמש*
         category: d?.category ?? null,
         unit: unitToApi(d?.unit),
         qty: d?.qty ?? null,
-        extras: (d?.extras as any) ?? null,
-        imageUrl: (t as any).imageUrl ?? null, // ✅ הוסף
-      };
-    });
+        extras: (d?.extras as any) ?? {},
+        imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
+      });
 
-    // ✅ דירוג: startsWith קודם, ואז status, ואז score, ואז אלפביתי
+      // 2. הוספת כל מותג כשורה נפרדת (למשל: "חלב (יטבתה)")
+      if (t.brandImages && t.brandImages.length > 0) {
+        for (const bi of t.brandImages) {
+          out.push({
+            id: t.id,
+            text: `${textLang} (${bi.brandName})`,
+            normalized: `${m.normalized}_${bi.brandName.toLowerCase()}`,
+            status: t.status,
+            upCount: c.up,
+            downCount: c.down,
+            myVote: args.userId ? (myVoteByTerm.get(t.id) ?? null) : null,
+            category: d?.category ?? null,
+            unit: unitToApi(d?.unit),
+            qty: d?.qty ?? null,
+            // הזרקת המותג ל-extras כדי שהאפליקציה תדע לשמור אותו
+            extras: { ...((d?.extras as any) ?? {}), brand: bi.brandName },
+            imageUrl: bi.imageUrl,
+          });
+        }
+      }
+    }
+
+    // דירוג
     out.sort((a, b) => {
       const aStarts = String(a.normalized ?? "").startsWith(qNorm) ? 1 : 0;
       const bStarts = String(b.normalized ?? "").startsWith(qNorm) ? 1 : 0;
       if (aStarts !== bStarts) return bStarts - aStarts;
 
-      const rank = (s: TermStatus) =>
+      const rank = (s: any) =>
         s === TermStatus.APPROVED
           ? 3
           : s === TermStatus.LIVE
@@ -220,8 +228,8 @@ export class TermsRepoPrisma {
               ? 1
               : 0;
 
-      const ra = rank(a.status as any);
-      const rb = rank(b.status as any);
+      const ra = rank(a.status);
+      const rb = rank(b.status);
       if (ra !== rb) return rb - ra;
 
       const sa = (a.upCount ?? 0) - (a.downCount ?? 0);
@@ -231,19 +239,25 @@ export class TermsRepoPrisma {
       return String(a.text ?? "").localeCompare(String(b.text ?? ""));
     });
 
-    // ✅ unique by id + limit
+    // הסרת כפילויות סופית (Dedupe) והגבלת כמות (Limit)
     const seen = new Set<string>();
     const uniq: typeof out = [];
+
     for (const x of out) {
-      if (seen.has(x.id)) continue;
-      seen.add(x.id);
+      // compositeKey משולב עם מותג כדי לאפשר הצגת מותגים שונים לאותו מוצר
+      const brand = x.extras?.brand || "";
+      const compositeKey = `${x.id}_${brand}`;
+
+      if (seen.has(compositeKey)) continue;
+
+      seen.add(compositeKey);
       uniq.push(x);
+
       if (uniq.length >= args.limit) break;
     }
 
     return uniq;
   }
-
   // ---- Create term + translations ----
   async createTerm(args: {
     scope: TermScope;
@@ -264,6 +278,7 @@ export class TermsRepoPrisma {
     // ✅ מניעת כפולים:
     // אם כבר קיימת תרגום זהה (lang+normalized) לטֶרם גלובלי LIVE/APPROVED -> נחזיר אותו במקום ליצור חדש
     const first = args.translations[0];
+    const brand = args.defaultExtras?.brand; // ✅ חילוץ המותג
     const existing = await this.prisma.termTranslation.findFirst({
       where: {
         lang: first.lang,
@@ -276,26 +291,43 @@ export class TermsRepoPrisma {
       select: { termId: true },
     });
 
-    if (existing?.termId) {
+    if (existing?.termId && !brand) {
       const found = await this.findTermById(existing.termId);
       if (found) return found as any;
     }
 
+    const translationsToCreate = args.translations.map((t) => {
+      // אם יש מותג, אנחנו מצמידים אותו ל-normalized כדי למנוע את חסימת ה-DB
+      // השתמשתי כאן ב-localNormalize כדי שלא תקבל שגיאת undefined
+      const finalNormalized = brand
+        ? `${t.normalized}_${localNormalize(String(brand))}`
+        : t.normalized;
+
+      return {
+        lang: t.lang,
+        text: t.text,
+        normalized: finalNormalized,
+        source: t.source,
+      };
+    });
     return this.prisma.term.create({
       data: {
         scope: args.scope,
         ownerUserId: args.ownerUserId ?? null,
         status: args.status,
+        imageUrl: args.imageUrl ?? null,
         defaultCategory: args.defaultCategory ?? null,
-        imageUrl: args.imageUrl ?? null, // ✅ הוסף
         defaultUnit: args.defaultUnit ?? null,
         defaultQty: args.defaultQty ?? null,
         defaultExtras: args.defaultExtras ?? null,
-        translations: { create: args.translations },
+        translations: {
+          create: translationsToCreate,
+        },
       },
       include: { translations: true },
     });
   }
+
   async setTermImage(termId: string, imageUrl: string | null) {
     return this.prisma.term.update({
       where: { id: termId },

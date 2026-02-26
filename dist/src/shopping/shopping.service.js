@@ -20,7 +20,7 @@ let ShoppingService = class ShoppingService {
     async listLists(householdId) {
         const rows = await this.prisma.shoppingList.findMany({
             where: { householdId },
-            orderBy: { updatedAt: 'desc' },
+            orderBy: { updatedAt: "desc" },
             select: {
                 id: true,
                 name: true,
@@ -31,9 +31,9 @@ let ShoppingService = class ShoppingService {
         return { ok: true, data: rows };
     }
     async createList(householdId, body) {
-        const name = (body?.name ?? '').trim();
+        const name = (body?.name ?? "").trim();
         if (!name)
-            throw new common_1.BadRequestException('name is required');
+            throw new common_1.BadRequestException("name is required");
         const row = await this.prisma.shoppingList.create({
             data: { householdId, name },
             select: { id: true, name: true, createdAt: true, updatedAt: true },
@@ -41,9 +41,9 @@ let ShoppingService = class ShoppingService {
         return { ok: true, data: row };
     }
     async renameList(householdId, listId, body) {
-        const name = (body?.name ?? '').trim();
+        const name = (body?.name ?? "").trim();
         if (!name)
-            throw new common_1.BadRequestException('name is required');
+            throw new common_1.BadRequestException("name is required");
         await this.assertListOwned(householdId, listId);
         const row = await this.prisma.shoppingList.update({
             where: { id: listId },
@@ -61,7 +61,7 @@ let ShoppingService = class ShoppingService {
         await this.assertListOwned(householdId, listId);
         const rows = await this.prisma.shoppingItem.findMany({
             where: { listId },
-            orderBy: [{ checked: 'asc' }, { updatedAt: 'desc' }],
+            orderBy: [{ checked: "asc" }, { updatedAt: "desc" }],
             select: {
                 id: true,
                 termId: true,
@@ -80,18 +80,20 @@ let ShoppingService = class ShoppingService {
     }
     async addItem(householdId, listId, body) {
         await this.assertListOwned(householdId, listId);
-        const text = (body?.text ?? '').trim();
+        const text = (body?.text ?? "").trim();
         if (!text)
-            throw new common_1.BadRequestException('text is required');
+            throw new common_1.BadRequestException("text is required");
         const termId = body.termId ? String(body.termId) : null;
         const qty = this.safeQty(body.qty);
         const unit = this.toPrismaUnit(body.unit);
         const category = body.category ?? null;
         const extra = body.extra ?? null;
         const imageUrlRaw = body?.imageUrl;
-        const imageUrl = imageUrlRaw === undefined || imageUrlRaw === null ? null : String(imageUrlRaw).trim() || null;
+        const imageUrl = imageUrlRaw === undefined || imageUrlRaw === null
+            ? null
+            : String(imageUrlRaw).trim() || null;
         const normalizedText = normalize(text);
-        const dedupeKey = makeDedupeKey(text, termId);
+        const dedupeKey = makeDedupeKey(text, termId, extra);
         let row;
         try {
             row = await this.prisma.shoppingItem.create({
@@ -123,7 +125,7 @@ let ShoppingService = class ShoppingService {
             });
         }
         catch (e) {
-            if (e?.code === 'P2002') {
+            if (e?.code === "P2002") {
                 row = await this.prisma.shoppingItem.update({
                     where: { listId_dedupeKey: { listId, dedupeKey } },
                     data: { qty, unit, category, extra, imageUrl },
@@ -159,7 +161,7 @@ let ShoppingService = class ShoppingService {
         if (body.text !== undefined) {
             const t = String(body.text).trim();
             if (!t)
-                throw new common_1.BadRequestException('text cannot be empty');
+                throw new common_1.BadRequestException("text cannot be empty");
             data.text = t;
             data.normalizedText = normalize(t);
         }
@@ -176,7 +178,7 @@ let ShoppingService = class ShoppingService {
             data.extra = body.extra === null ? null : body.extra;
         }
         if (body.imageUrl !== undefined) {
-            const v = body.imageUrl === null ? '' : String(body.imageUrl);
+            const v = body.imageUrl === null ? "" : String(body.imageUrl);
             const trimmed = v.trim();
             data.imageUrl = trimmed.length ? trimmed : null;
         }
@@ -185,6 +187,7 @@ let ShoppingService = class ShoppingService {
             data,
             select: {
                 id: true,
+                termId: true,
                 text: true,
                 qty: true,
                 unit: true,
@@ -192,10 +195,27 @@ let ShoppingService = class ShoppingService {
                 category: true,
                 extra: true,
                 imageUrl: true,
-                createdAt: true,
-                updatedAt: true,
             },
         });
+        if (body.imageUrl && row.termId) {
+            const brand = row.extra?.brand;
+            if (brand) {
+                await this.prisma.termBrandImage.upsert({
+                    where: {
+                        termId_brandName: {
+                            termId: row.termId,
+                            brandName: normalize(String(brand)),
+                        },
+                    },
+                    update: { imageUrl: row.imageUrl },
+                    create: {
+                        termId: row.termId,
+                        brandName: normalize(String(brand)),
+                        imageUrl: row.imageUrl,
+                    },
+                });
+            }
+        }
         await this.prisma.shoppingList.update({
             where: { id: listId },
             data: { updatedAt: new Date() },
@@ -220,7 +240,7 @@ let ShoppingService = class ShoppingService {
             select: { id: true },
         });
         if (!exists)
-            throw new common_1.NotFoundException('ShoppingList not found');
+            throw new common_1.NotFoundException("ShoppingList not found");
     }
     async assertItemInList(listId, itemId) {
         const exists = await this.prisma.shoppingItem.findFirst({
@@ -228,7 +248,7 @@ let ShoppingService = class ShoppingService {
             select: { id: true },
         });
         if (!exists)
-            throw new common_1.NotFoundException('ShoppingItem not found in list');
+            throw new common_1.NotFoundException("ShoppingItem not found in list");
     }
     safeQty(q) {
         const n = Number(q);
@@ -237,18 +257,18 @@ let ShoppingService = class ShoppingService {
         return Math.round(n * 100) / 100;
     }
     toPrismaUnit(u) {
-        const x = String(u ?? '')
+        const x = String(u ?? "")
             .trim()
             .toUpperCase();
-        if (x === 'PCS')
+        if (x === "PCS")
             return client_1.ShoppingUnit.PCS;
-        if (x === 'G')
+        if (x === "G")
             return client_1.ShoppingUnit.G;
-        if (x === 'KG')
+        if (x === "KG")
             return client_1.ShoppingUnit.KG;
-        if (x === 'ML')
+        if (x === "ML")
             return client_1.ShoppingUnit.ML;
-        if (x === 'L')
+        if (x === "L")
             return client_1.ShoppingUnit.L;
         return client_1.ShoppingUnit.PCS;
     }
@@ -257,8 +277,8 @@ let ShoppingService = class ShoppingService {
         const listIdMap = {};
         const itemIdMap = {};
         for (const l of lists) {
-            const name = String(l?.name ?? '').trim() || 'Shopping List';
-            const listLocalId = String(l?.listLocalId ?? '');
+            const name = String(l?.name ?? "").trim() || "Shopping List";
+            const listLocalId = String(l?.listLocalId ?? "");
             if (!listLocalId)
                 continue;
             const createdList = await this.prisma.shoppingList.create({
@@ -268,12 +288,12 @@ let ShoppingService = class ShoppingService {
             listIdMap[listLocalId] = createdList.id;
             const items = Array.isArray(l?.items) ? l.items : [];
             for (const it of items) {
-                const itemLocalId = String(it?.itemLocalId ?? '');
+                const itemLocalId = String(it?.itemLocalId ?? "");
                 if (!itemLocalId)
                     continue;
                 const imageUrlRaw = it?.imageUrl;
                 const imageUrl = imageUrlRaw == null ? null : String(imageUrlRaw).trim() || null;
-                const text = String(it?.text ?? '').trim();
+                const text = String(it?.text ?? "").trim();
                 if (!text)
                     continue;
                 const termId = it?.termId ? String(it.termId) : null;
@@ -283,7 +303,7 @@ let ShoppingService = class ShoppingService {
                 const category = it?.category ?? null;
                 const extra = it?.extra ?? null;
                 const normalizedText = normalize(text);
-                const dedupeKey = makeDedupeKey(text, termId);
+                const dedupeKey = makeDedupeKey(text, termId, extra);
                 let row;
                 try {
                     row = await this.prisma.shoppingItem.create({
@@ -304,7 +324,7 @@ let ShoppingService = class ShoppingService {
                     });
                 }
                 catch (e) {
-                    if (e?.code === 'P2002') {
+                    if (e?.code === "P2002") {
                         row = await this.prisma.shoppingItem.findFirst({
                             where: { listId: createdList.id, dedupeKey },
                             select: { id: true },
@@ -335,10 +355,11 @@ exports.ShoppingService = ShoppingService = __decorate([
 function normalize(s) {
     return s.trim().toLowerCase();
 }
-function makeDedupeKey(text, termId) {
+function makeDedupeKey(text, termId, extra) {
+    const brand = extra?.brand ? normalize(String(extra.brand)) : "no_brand";
     if (termId) {
-        return `${termId}`;
+        return `${termId}_${brand}`;
     }
-    return normalize(text);
+    return `${normalize(text)}_${brand}`;
 }
 //# sourceMappingURL=shopping.service.js.map

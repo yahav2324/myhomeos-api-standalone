@@ -221,19 +221,33 @@ enum VoteValue {
   DOWN
 }
 
+model TermBrandImage {
+  id        String   @id @default(uuid())
+  termId    String
+  brandName String   // שם המותג (מנורמל, למשל "תנובה")
+  imageUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  term Term @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@unique([termId, brandName]) // מונע כפילות - תמונה אחת לכל שילוב
+}
+
 model TermUserDefaults {
-  userId   String
-  termId   String
+  userId  String
+  termId  String
 
   category ShoppingCategory?
   unit     ShoppingUnit?
   qty      Float?
   extras   Json?
-
+  imageUrl String?
+  
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   term Term @relation(fields: [termId], references: [id], onDelete: Cascade)
 
-  @@id([userId, termId])                 // ✅ זה מייצר where unique בשם userId_termId
+  @@id([userId, termId])
   @@index([termId])
 }
 
@@ -247,8 +261,7 @@ model Term {
   // legacy flags (השארתי כדי לא לשבור קוד קיים)
   approvedByAdmin Boolean   @default(false)
   approvedAt      DateTime?
-
-  // ✅ NEW: defaults for shopping
+  brandImages TermBrandImage[]
   defaultCategory ShoppingCategory?
   defaultUnit     ShoppingUnit?
   defaultQty      Float?

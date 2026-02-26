@@ -29,6 +29,9 @@ const unitToApi = (u) => {
         return "l";
     return null;
 };
+function localNormalize(s) {
+    return s.trim().toLowerCase().replace(/\s+/g, "_");
+}
 let TermsRepoPrisma = class TermsRepoPrisma {
     constructor(prisma) {
         this.prisma = prisma;
@@ -71,6 +74,20 @@ let TermsRepoPrisma = class TermsRepoPrisma {
                     : undefined,
             ].filter(Boolean),
         };
+        const termInclude = {
+            term: {
+                select: {
+                    id: true,
+                    scope: true,
+                    ownerUserId: true,
+                    status: true,
+                    imageUrl: true,
+                    approvedByAdmin: true,
+                    translations: { select: { lang: true, text: true } },
+                    brandImages: true,
+                },
+            },
+        };
         const starts = await this.prisma.termTranslation.findMany({
             where: {
                 lang: args.lang,
@@ -78,19 +95,7 @@ let TermsRepoPrisma = class TermsRepoPrisma {
                 term: baseTermWhere,
             },
             take: args.limit * 4,
-            include: {
-                term: {
-                    select: {
-                        id: true,
-                        scope: true,
-                        ownerUserId: true,
-                        status: true,
-                        imageUrl: true,
-                        approvedByAdmin: true,
-                        translations: { select: { lang: true, text: true } },
-                    },
-                },
-            },
+            include: termInclude,
             orderBy: [{ normalized: "asc" }],
         });
         const needMore = starts.length < args.limit;
@@ -102,19 +107,7 @@ let TermsRepoPrisma = class TermsRepoPrisma {
                     term: baseTermWhere,
                 },
                 take: args.limit * 12,
-                include: {
-                    term: {
-                        select: {
-                            id: true,
-                            scope: true,
-                            ownerUserId: true,
-                            status: true,
-                            imageUrl: true,
-                            approvedByAdmin: true,
-                            translations: { select: { lang: true, text: true } },
-                        },
-                    },
-                },
+                include: termInclude,
                 orderBy: [{ normalized: "asc" }],
             })
             : [];
@@ -131,6 +124,7 @@ let TermsRepoPrisma = class TermsRepoPrisma {
                     unit: true,
                     qty: true,
                     extras: true,
+                    imageUrl: true,
                 },
             })
             : [];
@@ -158,15 +152,16 @@ let TermsRepoPrisma = class TermsRepoPrisma {
         const myVoteByTerm = new Map();
         for (const v of myVotes)
             myVoteByTerm.set(v.termId, v.vote);
-        const out = matches.map((m) => {
+        const out = [];
+        for (const m of matches) {
             const t = m.term;
             const c = countsByTerm.get(t.id) ?? { up: 0, down: 0 };
+            const d = args.userId ? myDefaultsByTerm.get(t.id) : null;
             const textLang = t.translations.find((x) => x.lang === args.lang)?.text ??
                 t.translations.find((x) => x.lang === "en")?.text ??
                 t.translations[0]?.text ??
                 m.text;
-            const d = args.userId ? myDefaultsByTerm.get(t.id) : null;
-            return {
+            out.push({
                 id: t.id,
                 text: textLang,
                 normalized: m.normalized,
@@ -177,10 +172,28 @@ let TermsRepoPrisma = class TermsRepoPrisma {
                 category: d?.category ?? null,
                 unit: unitToApi(d?.unit),
                 qty: d?.qty ?? null,
-                extras: d?.extras ?? null,
-                imageUrl: t.imageUrl ?? null,
-            };
-        });
+                extras: d?.extras ?? {},
+                imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
+            });
+            if (t.brandImages && t.brandImages.length > 0) {
+                for (const bi of t.brandImages) {
+                    out.push({
+                        id: t.id,
+                        text: `${textLang} (${bi.brandName})`,
+                        normalized: `${m.normalized}_${bi.brandName.toLowerCase()}`,
+                        status: t.status,
+                        upCount: c.up,
+                        downCount: c.down,
+                        myVote: args.userId ? (myVoteByTerm.get(t.id) ?? null) : null,
+                        category: d?.category ?? null,
+                        unit: unitToApi(d?.unit),
+                        qty: d?.qty ?? null,
+                        extras: { ...(d?.extras ?? {}), brand: bi.brandName },
+                        imageUrl: bi.imageUrl,
+                    });
+                }
+            }
+        }
         out.sort((a, b) => {
             const aStarts = String(a.normalized ?? "").startsWith(qNorm) ? 1 : 0;
             const bStarts = String(b.normalized ?? "").startsWith(qNorm) ? 1 : 0;
@@ -206,9 +219,11 @@ let TermsRepoPrisma = class TermsRepoPrisma {
         const seen = new Set();
         const uniq = [];
         for (const x of out) {
-            if (seen.has(x.id))
+            const brand = x.extras?.brand || "";
+            const compositeKey = `${x.id}_${brand}`;
+            if (seen.has(compositeKey))
                 continue;
-            seen.add(x.id);
+            seen.add(compositeKey);
             uniq.push(x);
             if (uniq.length >= args.limit)
                 break;
@@ -217,6 +232,7 @@ let TermsRepoPrisma = class TermsRepoPrisma {
     }
     async createTerm(args) {
         const first = args.translations[0];
+        const brand = args.defaultExtras?.brand;
         const existing = await this.prisma.termTranslation.findFirst({
             where: {
                 lang: first.lang,
@@ -228,22 +244,35 @@ let TermsRepoPrisma = class TermsRepoPrisma {
             },
             select: { termId: true },
         });
-        if (existing?.termId) {
+        if (existing?.termId && !brand) {
             const found = await this.findTermById(existing.termId);
             if (found)
                 return found;
         }
+        const translationsToCreate = args.translations.map((t) => {
+            const finalNormalized = brand
+                ? `${t.normalized}_${localNormalize(String(brand))}`
+                : t.normalized;
+            return {
+                lang: t.lang,
+                text: t.text,
+                normalized: finalNormalized,
+                source: t.source,
+            };
+        });
         return this.prisma.term.create({
             data: {
                 scope: args.scope,
                 ownerUserId: args.ownerUserId ?? null,
                 status: args.status,
-                defaultCategory: args.defaultCategory ?? null,
                 imageUrl: args.imageUrl ?? null,
+                defaultCategory: args.defaultCategory ?? null,
                 defaultUnit: args.defaultUnit ?? null,
                 defaultQty: args.defaultQty ?? null,
                 defaultExtras: args.defaultExtras ?? null,
-                translations: { create: args.translations },
+                translations: {
+                    create: translationsToCreate,
+                },
             },
             include: { translations: true },
         });

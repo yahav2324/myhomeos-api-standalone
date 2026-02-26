@@ -1,4 +1,4 @@
-import { TermsRepoPrisma } from './terms.repo.prisma';
+import { TermsRepoPrisma } from "./terms.repo.prisma";
 type CatalogConfig = {
     minQueryChars: number;
     upApproveMin: number;
@@ -31,20 +31,7 @@ export declare class TermsService {
         lang: string;
         limit: number;
         userId?: string | null;
-    }): Promise<{
-        id: string;
-        text: string;
-        normalized: string;
-        status: import(".prisma/client").$Enums.TermStatus;
-        upCount: number;
-        downCount: number;
-        myVote: import(".prisma/client").$Enums.VoteValue;
-        category: import(".prisma/client").$Enums.ShoppingCategory;
-        unit: string;
-        qty: number;
-        extras: any;
-        imageUrl: any;
-    }[]>;
+    }): Promise<any[]>;
     create(body: unknown, userId: string): Promise<{
         ok: boolean;
         data: {
@@ -82,6 +69,7 @@ export declare class TermsService {
             extras: import("@prisma/client/runtime/client").JsonValue | null;
             userId: string;
             termId: string;
+            imageUrl: string | null;
         };
     }>;
     vote(termId: string, body: unknown, userId: string): Promise<{

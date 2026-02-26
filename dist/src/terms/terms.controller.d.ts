@@ -28,20 +28,7 @@ export declare class TermsController {
     }>;
     suggest(q: string, lang: string, limit: string, req: any): Promise<{
         ok: boolean;
-        data: {
-            id: string;
-            text: string;
-            normalized: string;
-            status: import(".prisma/client").$Enums.TermStatus;
-            upCount: number;
-            downCount: number;
-            myVote: import(".prisma/client").$Enums.VoteValue;
-            category: import(".prisma/client").$Enums.ShoppingCategory;
-            unit: string;
-            qty: number;
-            extras: any;
-            imageUrl: any;
-        }[];
+        data: any[];
     }>;
     create(body: unknown, req: any): Promise<{
         ok: boolean;
@@ -80,6 +67,7 @@ export declare class TermsController {
             extras: import("@prisma/client/runtime/client").JsonValue | null;
             userId: string;
             termId: string;
+            imageUrl: string | null;
         };
     }>;
     vote(id: string, body: unknown, req: any): Promise<{

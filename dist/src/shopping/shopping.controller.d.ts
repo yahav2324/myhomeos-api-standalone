@@ -80,10 +80,9 @@ export declare class ShoppingController {
         data: {
             unit: import(".prisma/client").$Enums.ShoppingUnit;
             id: string;
-            createdAt: Date;
-            updatedAt: Date;
             category: import(".prisma/client").$Enums.ShoppingCategory;
             qty: number;
+            termId: string;
             text: string;
             imageUrl: string;
             checked: boolean;
@@ -97,10 +96,9 @@ export declare class ShoppingController {
         data: {
             unit: import(".prisma/client").$Enums.ShoppingUnit;
             id: string;
-            createdAt: Date;
-            updatedAt: Date;
             category: import(".prisma/client").$Enums.ShoppingCategory;
             qty: number;
+            termId: string;
             text: string;
             imageUrl: string;
             checked: boolean;

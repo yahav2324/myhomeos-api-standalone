@@ -1,10 +1,14 @@
 // apps/api/src/shopping/shopping.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { ShoppingCategory } from '@smart-kitchen/contracts';
-import { ShoppingUnit } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { ShoppingCategory } from "@smart-kitchen/contracts";
+import { ShoppingUnit } from "@prisma/client";
 
-type ApiUnit = 'PCS' | 'G' | 'KG' | 'ML' | 'L';
+type ApiUnit = "PCS" | "G" | "KG" | "ML" | "L";
 
 @Injectable()
 export class ShoppingService {
@@ -15,7 +19,7 @@ export class ShoppingService {
   async listLists(householdId: string) {
     const rows = await this.prisma.shoppingList.findMany({
       where: { householdId },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
       select: {
         id: true,
         name: true,
@@ -28,8 +32,8 @@ export class ShoppingService {
   }
 
   async createList(householdId: string, body: { name: string }) {
-    const name = (body?.name ?? '').trim();
-    if (!name) throw new BadRequestException('name is required');
+    const name = (body?.name ?? "").trim();
+    if (!name) throw new BadRequestException("name is required");
 
     const row = await this.prisma.shoppingList.create({
       data: { householdId, name },
@@ -39,9 +43,13 @@ export class ShoppingService {
     return { ok: true, data: row };
   }
 
-  async renameList(householdId: string, listId: string, body: { name: string }) {
-    const name = (body?.name ?? '').trim();
-    if (!name) throw new BadRequestException('name is required');
+  async renameList(
+    householdId: string,
+    listId: string,
+    body: { name: string },
+  ) {
+    const name = (body?.name ?? "").trim();
+    if (!name) throw new BadRequestException("name is required");
 
     await this.assertListOwned(householdId, listId);
 
@@ -68,7 +76,7 @@ export class ShoppingService {
 
     const rows = await this.prisma.shoppingItem.findMany({
       where: { listId },
-      orderBy: [{ checked: 'asc' }, { updatedAt: 'desc' }],
+      orderBy: [{ checked: "asc" }, { updatedAt: "desc" }],
       select: {
         id: true,
         termId: true,
@@ -102,8 +110,8 @@ export class ShoppingService {
   ) {
     await this.assertListOwned(householdId, listId);
 
-    const text = (body?.text ?? '').trim();
-    if (!text) throw new BadRequestException('text is required');
+    const text = (body?.text ?? "").trim();
+    if (!text) throw new BadRequestException("text is required");
 
     const termId = body.termId ? String(body.termId) : null;
 
@@ -113,12 +121,13 @@ export class ShoppingService {
     const extra = body.extra ?? null;
     const imageUrlRaw = body?.imageUrl;
     const imageUrl =
-      imageUrlRaw === undefined || imageUrlRaw === null ? null : String(imageUrlRaw).trim() || null;
+      imageUrlRaw === undefined || imageUrlRaw === null
+        ? null
+        : String(imageUrlRaw).trim() || null;
 
     const normalizedText = normalize(text);
-    const dedupeKey = makeDedupeKey(text, termId);
+    const dedupeKey = makeDedupeKey(text, termId, extra);
 
-    // ✅ ניסיון ליצור; אם כבר קיים (unique) נחזיר את הקיים
     let row;
     try {
       row = await this.prisma.shoppingItem.create({
@@ -150,7 +159,7 @@ export class ShoppingService {
       });
     } catch (e: any) {
       // Prisma unique violation
-      if (e?.code === 'P2002') {
+      if (e?.code === "P2002") {
         row = await this.prisma.shoppingItem.update({
           where: { listId_dedupeKey: { listId, dedupeKey } }, // דורש unique composite בשם כזה בפריזמה
           data: { qty, unit, category, extra, imageUrl }, // ✅
@@ -202,7 +211,7 @@ export class ShoppingService {
 
     if (body.text !== undefined) {
       const t = String(body.text).trim();
-      if (!t) throw new BadRequestException('text cannot be empty');
+      if (!t) throw new BadRequestException("text cannot be empty");
       data.text = t;
       data.normalizedText = normalize(t);
     }
@@ -211,24 +220,26 @@ export class ShoppingService {
     if (body.checked !== undefined) data.checked = Boolean(body.checked);
 
     if (body.category !== undefined) {
-      // allow null to clear
       data.category = body.category === null ? null : body.category;
     }
 
     if (body.extra !== undefined) {
       data.extra = body.extra === null ? null : body.extra;
     }
+
     if (body.imageUrl !== undefined) {
-      const v = body.imageUrl === null ? '' : String(body.imageUrl);
+      const v = body.imageUrl === null ? "" : String(body.imageUrl);
       const trimmed = v.trim();
-      data.imageUrl = trimmed.length ? trimmed : null; // "" => null (הסרה)
+      data.imageUrl = trimmed.length ? trimmed : null;
     }
 
+    // עדכון הפריט וקבלת הנתונים המעודכנים (כולל termId)
     const row = await this.prisma.shoppingItem.update({
       where: { id: itemId },
       data,
       select: {
         id: true,
+        termId: true, // חיוני ללוגיקה הגלובלית
         text: true,
         qty: true,
         unit: true,
@@ -236,12 +247,32 @@ export class ShoppingService {
         category: true,
         extra: true,
         imageUrl: true,
-        createdAt: true,
-        updatedAt: true,
       },
     });
 
-    // bump list updatedAt
+    if (body.imageUrl && row.termId) {
+      const brand = (row.extra as any)?.brand;
+
+      if (brand) {
+        // עדכון המאגר שמשותף לכולם!
+        await this.prisma.termBrandImage.upsert({
+          where: {
+            termId_brandName: {
+              termId: row.termId,
+              brandName: normalize(String(brand)),
+            },
+          },
+          update: { imageUrl: row.imageUrl },
+          create: {
+            termId: row.termId,
+            brandName: normalize(String(brand)),
+            imageUrl: row.imageUrl,
+          },
+        });
+      }
+    }
+
+    // עדכון זמן עדכון הרשימה
     await this.prisma.shoppingList.update({
       where: { id: listId },
       data: { updatedAt: new Date() },
@@ -274,7 +305,7 @@ export class ShoppingService {
       where: { id: listId, householdId },
       select: { id: true },
     });
-    if (!exists) throw new NotFoundException('ShoppingList not found');
+    if (!exists) throw new NotFoundException("ShoppingList not found");
   }
 
   private async assertItemInList(listId: string, itemId: string) {
@@ -282,7 +313,7 @@ export class ShoppingService {
       where: { id: itemId, listId },
       select: { id: true },
     });
-    if (!exists) throw new NotFoundException('ShoppingItem not found in list');
+    if (!exists) throw new NotFoundException("ShoppingItem not found in list");
   }
 
   private safeQty(q?: number) {
@@ -292,15 +323,15 @@ export class ShoppingService {
   }
 
   private toPrismaUnit(u?: ApiUnit | string): ShoppingUnit {
-    const x = String(u ?? '')
+    const x = String(u ?? "")
       .trim()
       .toUpperCase();
 
-    if (x === 'PCS') return ShoppingUnit.PCS;
-    if (x === 'G') return ShoppingUnit.G;
-    if (x === 'KG') return ShoppingUnit.KG;
-    if (x === 'ML') return ShoppingUnit.ML;
-    if (x === 'L') return ShoppingUnit.L;
+    if (x === "PCS") return ShoppingUnit.PCS;
+    if (x === "G") return ShoppingUnit.G;
+    if (x === "KG") return ShoppingUnit.KG;
+    if (x === "ML") return ShoppingUnit.ML;
+    if (x === "L") return ShoppingUnit.L;
 
     return ShoppingUnit.PCS;
   }
@@ -314,8 +345,8 @@ export class ShoppingService {
     const itemIdMap: Record<string, string> = {};
 
     for (const l of lists) {
-      const name = String(l?.name ?? '').trim() || 'Shopping List';
-      const listLocalId = String(l?.listLocalId ?? '');
+      const name = String(l?.name ?? "").trim() || "Shopping List";
+      const listLocalId = String(l?.listLocalId ?? "");
       if (!listLocalId) continue;
 
       // Create new list in this household (simple). If you want dedupe by name, you can.
@@ -328,12 +359,13 @@ export class ShoppingService {
 
       const items = Array.isArray(l?.items) ? l.items : [];
       for (const it of items) {
-        const itemLocalId = String(it?.itemLocalId ?? '');
+        const itemLocalId = String(it?.itemLocalId ?? "");
         if (!itemLocalId) continue;
         const imageUrlRaw = it?.imageUrl;
-        const imageUrl = imageUrlRaw == null ? null : String(imageUrlRaw).trim() || null;
+        const imageUrl =
+          imageUrlRaw == null ? null : String(imageUrlRaw).trim() || null;
 
-        const text = String(it?.text ?? '').trim();
+        const text = String(it?.text ?? "").trim();
         if (!text) continue;
 
         const termId = it?.termId ? String(it.termId) : null;
@@ -344,8 +376,7 @@ export class ShoppingService {
         const extra = it?.extra ?? null;
 
         const normalizedText = normalize(text);
-        const dedupeKey = makeDedupeKey(text, termId);
-
+        const dedupeKey = makeDedupeKey(text, termId, extra);
         // Create with dedupe (same as addItem)
         let row: any;
         try {
@@ -366,7 +397,7 @@ export class ShoppingService {
             select: { id: true },
           });
         } catch (e: any) {
-          if (e?.code === 'P2002') {
+          if (e?.code === "P2002") {
             row = await this.prisma.shoppingItem.findFirst({
               where: { listId: createdList.id, dedupeKey },
               select: { id: true },
@@ -396,9 +427,17 @@ function normalize(s: string) {
   return s.trim().toLowerCase();
 }
 
-function makeDedupeKey(text: string, termId: string | null): string {
+function makeDedupeKey(
+  text: string,
+  termId: string | null,
+  extra?: any,
+): string {
+  // חילוץ המותג מתוך ה-extra
+  const brand = extra?.brand ? normalize(String(extra.brand)) : "no_brand";
+
   if (termId) {
-    return `${termId}`;
+    // עכשיו המפתח הוא שילוב של ה-ID של המוצר והמותג
+    return `${termId}_${brand}`;
   }
-  return normalize(text);
+  return `${normalize(text)}_${brand}`;
 }

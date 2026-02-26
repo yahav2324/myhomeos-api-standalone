@@ -1,20 +1,29 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ShoppingCategory, ShoppingUnit, TermScope, TermStatus, VoteValue } from '@prisma/client';
-import { z } from 'zod';
-import { TermsRepoPrisma } from './terms.repo.prisma';
-import { UpsertMyDefaultsSchema } from '@smart-kitchen/contracts';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import {
+  ShoppingCategory,
+  ShoppingUnit,
+  TermScope,
+  TermStatus,
+  VoteValue,
+} from "@prisma/client";
+import { z } from "zod";
+import { TermsRepoPrisma } from "./terms.repo.prisma";
+import { UpsertMyDefaultsSchema } from "@smart-kitchen/contracts";
 
 // ---- Zod schemas ----
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
   lang: z.string().min(2).max(10).optional(), // "he" | "en" ...
-  scope: z.enum(['GLOBAL', 'PRIVATE']).optional(),
+  scope: z.enum(["GLOBAL", "PRIVATE"]).optional(),
   category: z.nativeEnum(ShoppingCategory).optional(),
   unit: z.nativeEnum(ShoppingUnit).optional(),
   qty: z.number().positive().optional(),
   extras: z.record(z.string(), z.string()).optional(),
-  imageUrl: z.string().url().optional(),
-
+  imageUrl: z.string().optional().nullable(),
   // new names from client (optional)
   defaultCategory: z.nativeEnum(ShoppingCategory).optional(),
   defaultUnit: z.nativeEnum(ShoppingUnit).optional(),
@@ -23,7 +32,7 @@ const CreateTermBodySchema = z.object({
 });
 
 const VoteBodySchema = z.object({
-  vote: z.enum(['UP', 'DOWN']),
+  vote: z.enum(["UP", "DOWN"]),
 });
 
 // ---- config types ----
@@ -46,13 +55,16 @@ function normalizeText(s: string) {
 
 function detectLang(text: string): string {
   const t = text.trim();
-  if (/[֐-׿]/.test(t)) return 'he';
-  if (/[a-zA-Z]/.test(t)) return 'en';
-  return 'und';
+  if (/[֐-׿]/.test(t)) return "he";
+  if (/[a-zA-Z]/.test(t)) return "en";
+  return "und";
 }
 
 // בעתיד: translate provider
-async function translateToEnglish(text: string, fromLang: string): Promise<string | null> {
+async function translateToEnglish(
+  text: string,
+  fromLang: string,
+): Promise<string | null> {
   void text;
   void fromLang;
   return null;
@@ -63,10 +75,12 @@ export class TermsService {
   constructor(private readonly repo: TermsRepoPrisma) {}
 
   async getCatalogConfig(): Promise<CatalogConfig> {
-    const row = await this.repo.getSystemConfig('catalog');
+    const row = await this.repo.getSystemConfig("catalog");
 
-    if (!row?.json || typeof row.json !== 'object') {
-      await this.repo.upsertSystemConfig('catalog', { catalog: DEFAULT_CATALOG_CONFIG });
+    if (!row?.json || typeof row.json !== "object") {
+      await this.repo.upsertSystemConfig("catalog", {
+        catalog: DEFAULT_CATALOG_CONFIG,
+      });
       return DEFAULT_CATALOG_CONFIG;
     }
 
@@ -74,33 +88,46 @@ export class TermsService {
     const cfg = obj.catalog ?? obj;
 
     return {
-      minQueryChars: Number(cfg.minQueryChars ?? DEFAULT_CATALOG_CONFIG.minQueryChars),
-      upApproveMin: Number(cfg.upApproveMin ?? DEFAULT_CATALOG_CONFIG.upApproveMin),
-      downRejectMin: Number(cfg.downRejectMin ?? DEFAULT_CATALOG_CONFIG.downRejectMin),
+      minQueryChars: Number(
+        cfg.minQueryChars ?? DEFAULT_CATALOG_CONFIG.minQueryChars,
+      ),
+      upApproveMin: Number(
+        cfg.upApproveMin ?? DEFAULT_CATALOG_CONFIG.upApproveMin,
+      ),
+      downRejectMin: Number(
+        cfg.downRejectMin ?? DEFAULT_CATALOG_CONFIG.downRejectMin,
+      ),
     };
   }
 
   async setTermImage(termId: string, imageUrl: string | null, userId: string) {
     const term = await this.repo.findTermById(termId);
-    if (!term) throw new NotFoundException('Term not found');
+    if (!term) throw new NotFoundException("Term not found");
 
     // רק הבעלים של מונח פרטי או אדמין יכולים לשנות את התמונה
     if (term.scope === TermScope.PRIVATE && term.ownerUserId !== userId) {
-      throw new BadRequestException('Not authorized to change image of this term');
+      throw new BadRequestException(
+        "Not authorized to change image of this term",
+      );
     }
 
     const updated = await this.repo.setTermImage(termId, imageUrl);
     return { ok: true, data: updated };
   }
 
-  async suggest(args: { q: string; lang: string; limit: number; userId?: string | null }) {
+  async suggest(args: {
+    q: string;
+    lang: string;
+    limit: number;
+    userId?: string | null;
+  }) {
     const cfg = await this.getCatalogConfig();
 
     const qTrim = args.q.trim();
     if (qTrim.length < cfg.minQueryChars) return [];
 
     const qNorm = normalizeText(qTrim);
-    const lang = (args.lang || 'en').trim().toLowerCase();
+    const lang = (args.lang || "en").trim().toLowerCase();
     const limit = Math.min(Math.max(args.limit || 10, 1), 30);
 
     return this.repo.suggest({ qNorm, lang, limit, userId: args.userId });
@@ -111,8 +138,12 @@ export class TermsService {
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
 
     const text = parsed.data.text.trim();
-    const lang = (parsed.data.lang?.trim() || detectLang(text) || 'und').toLowerCase();
-    const scope = (parsed.data.scope ?? 'GLOBAL') as 'GLOBAL' | 'PRIVATE';
+    const lang = (
+      parsed.data.lang?.trim() ||
+      detectLang(text) ||
+      "und"
+    ).toLowerCase();
+    const scope = (parsed.data.scope ?? "GLOBAL") as "GLOBAL" | "PRIVATE";
     const cat = parsed.data.defaultCategory ?? parsed.data.category ?? null;
     const unit = parsed.data.defaultUnit ?? parsed.data.unit ?? null;
     const qty = parsed.data.defaultQty ?? parsed.data.qty ?? null;
@@ -120,10 +151,12 @@ export class TermsService {
     const imageUrl = parsed.data.imageUrl ?? null;
     // ✅ PRIVATE נשאר פרטי ליוצר
     const term = await this.repo.createTerm({
-      scope: scope === 'PRIVATE' ? TermScope.PRIVATE : TermScope.GLOBAL,
-      ownerUserId: scope === 'PRIVATE' ? userId : null,
-      status: scope === 'PRIVATE' ? TermStatus.PENDING : TermStatus.LIVE,
-      translations: [{ lang, text, normalized: normalizeText(text), source: 'USER' }],
+      scope: scope === "PRIVATE" ? TermScope.PRIVATE : TermScope.GLOBAL,
+      ownerUserId: scope === "PRIVATE" ? userId : null,
+      status: scope === "PRIVATE" ? TermStatus.PENDING : TermStatus.LIVE,
+      translations: [
+        { lang, text, normalized: normalizeText(text), source: "USER" },
+      ],
       imageUrl,
       defaultCategory: cat,
       defaultUnit: unit,
@@ -132,17 +165,17 @@ export class TermsService {
     });
 
     // Auto translate to English (optional)
-    const hasEn = term.translations.some((t) => t.lang === 'en');
-    if (!hasEn && lang !== 'en') {
+    const hasEn = term.translations.some((t) => t.lang === "en");
+    if (!hasEn && lang !== "en") {
       try {
         const en = await translateToEnglish(text, lang);
         if (en && en.trim().length > 0) {
           await this.repo.addTranslation({
             termId: term.id,
-            lang: 'en',
+            lang: "en",
             text: en.trim(),
             normalized: normalizeText(en),
-            source: 'AUTO',
+            source: "AUTO",
           });
         }
       } catch {
@@ -163,10 +196,11 @@ export class TermsService {
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
 
     const term = await this.repo.findTermById(termId);
-    if (!term) throw new NotFoundException('Term not found');
+    if (!term) throw new NotFoundException("Term not found");
 
     const d = parsed.data;
 
+    // מחקנו את ה-imageUrl מכאן. אנחנו לא רוצים לשמור "תמונה אישית".
     const row = await this.repo.upsertMyDefaults({
       termId,
       userId,
@@ -184,13 +218,13 @@ export class TermsService {
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
 
     const term = await this.repo.findTermById(termId);
-    if (!term) throw new NotFoundException('Term not found');
+    if (!term) throw new NotFoundException("Term not found");
 
     // vote upsert
     await this.repo.upsertVote({
       termId,
       userId,
-      vote: parsed.data.vote === 'UP' ? VoteValue.UP : VoteValue.DOWN,
+      vote: parsed.data.vote === "UP" ? VoteValue.UP : VoteValue.DOWN,
     });
 
     const cfg = await this.getCatalogConfig();
@@ -211,11 +245,16 @@ export class TermsService {
     } else {
       // ✅ נשאר LIVE כדי שכולם ימשיכו לראות ולדרג
       // (PENDING שמור למקרה של “ריסאבמיט” בעתיד / או PRIVATE)
-      newStatus = term.scope === TermScope.PRIVATE ? TermStatus.PENDING : TermStatus.LIVE;
+      newStatus =
+        term.scope === TermScope.PRIVATE ? TermStatus.PENDING : TermStatus.LIVE;
       approvedAt = null;
     }
 
-    const updated = await this.repo.updateTermStatus(termId, newStatus, approvedAt);
+    const updated = await this.repo.updateTermStatus(
+      termId,
+      newStatus,
+      approvedAt,
+    );
 
     return {
       ok: true,
