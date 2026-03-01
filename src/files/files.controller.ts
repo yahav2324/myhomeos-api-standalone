@@ -8,10 +8,7 @@ import {
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/jwt.guard";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { memoryStorage } from "multer";
 import { extname } from "path";
-import "multer";
-
 import { v2 as cloudinary } from "cloudinary";
 const toStream = require("buffer-to-stream");
 
@@ -38,7 +35,7 @@ export class FilesController {
   @Post("images")
   @UseInterceptors(
     FileInterceptor("file", {
-      storage: memoryStorage(), // שומר את הקובץ בזיכרון זמנית לצורך העלאה
+      // הסרנו את ה-storage: memoryStorage() כי זה ברירת המחדל כשזה ריק
       limits: { fileSize: 5 * 1024 * 1024 },
       fileFilter,
     }),
@@ -55,10 +52,10 @@ export class FilesController {
             resolve(result);
           },
         );
+        // file.buffer עדיין יהיה קיים כי NestJS שומר בזיכרון כברירת מחדל
         toStream(file.buffer).pipe(upload);
       });
 
-      // במקום נתיב מקומי /uploads/..., אנחנו מחזירים URL מלא ומאובטח
       return { ok: true, data: { imageUrl: result.secure_url } };
     } catch (error) {
       throw new BadRequestException("Failed to upload image to Cloudinary");
