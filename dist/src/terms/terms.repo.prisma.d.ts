@@ -7,15 +7,15 @@ export declare class TermsRepoPrisma {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        json: import("@prisma/client/runtime/client").JsonValue;
         key: string;
+        json: import("@prisma/client/runtime/client").JsonValue;
     }>;
     upsertSystemConfig(key: string, json: unknown): Promise<{
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        json: import("@prisma/client/runtime/client").JsonValue;
         key: string;
+        json: import("@prisma/client/runtime/client").JsonValue;
     }>;
     suggest(args: {
         qNorm: string;

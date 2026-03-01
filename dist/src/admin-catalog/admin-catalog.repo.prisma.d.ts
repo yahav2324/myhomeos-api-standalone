@@ -6,15 +6,15 @@ export declare class AdminCatalogRepoPrisma {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        json: import("@prisma/client/runtime/client").JsonValue;
         key: string;
+        json: import("@prisma/client/runtime/client").JsonValue;
     }>;
     upsertConfig(json: unknown): Promise<{
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        json: import("@prisma/client/runtime/client").JsonValue;
         key: string;
+        json: import("@prisma/client/runtime/client").JsonValue;
     }>;
     audit(args: {
         adminId: string;

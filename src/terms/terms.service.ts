@@ -14,17 +14,15 @@ import { z } from "zod";
 import { TermsRepoPrisma } from "./terms.repo.prisma";
 import { UpsertMyDefaultsSchema } from "@smart-kitchen/contracts";
 
-// ---- Zod schemas ----
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
-  lang: z.string().min(2).max(10).optional(), // "he" | "en" ...
+  lang: z.string().min(2).max(10).optional(),
   scope: z.enum(["GLOBAL", "PRIVATE"]).optional(),
   category: z.nativeEnum(ShoppingCategory).optional(),
   unit: z.nativeEnum(ShoppingUnit).optional(),
   qty: z.number().positive().optional(),
   extras: z.record(z.string(), z.string()).optional(),
   imageUrl: z.string().optional().nullable(),
-  // new names from client (optional)
   defaultCategory: z.nativeEnum(ShoppingCategory).optional(),
   defaultUnit: z.nativeEnum(ShoppingUnit).optional(),
   defaultQty: z.number().positive().optional(),
