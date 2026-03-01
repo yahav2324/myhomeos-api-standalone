@@ -7,8 +7,9 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    // בגרסה 6, אנחנו לא צריכים אדאפטר חיצוני ל-Postgres
-    super();
+    super({
+      log: ["query", "info", "warn", "error"], // יעזור לנו לראות אם יש שאילתות "כבדות" מדי
+    });
   }
 
   async onModuleInit() {

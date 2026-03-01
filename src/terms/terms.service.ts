@@ -217,8 +217,8 @@ export class TermsService {
       unit: d.unit ?? null,
       qty: d.qty ?? null,
       extras: d.extras ?? null,
-      imageUrl: d.imageUrl ?? null, // הוספה מחדש
-      brandName: d.brandName ?? null, // הוספת השדה החדש
+      imageUrl: d.imageUrl ?? null,
+      brandName: d.brandName ?? null,
     });
 
     return { ok: true, data: row };

@@ -190,6 +190,7 @@ export class TermsRepoPrisma {
         qty: d?.qty ?? null,
         extras: (d?.extras as any) ?? {},
         imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
+        brandName: d?.brandName ?? null,
       });
 
       // 2. הוספת כל מותג כשורה נפרדת (למשל: "חלב (יטבתה)")
@@ -246,7 +247,7 @@ export class TermsRepoPrisma {
 
     for (const x of out) {
       // compositeKey משולב עם מותג כדי לאפשר הצגת מותגים שונים לאותו מוצר
-      const brand = x.extras?.brand || "";
+      const brand = x.brandName || x.extras?.brand || "";
       const compositeKey = `${x.id}_${brand}`;
 
       if (seen.has(compositeKey)) continue;
