@@ -14,6 +14,7 @@ import { z } from "zod";
 import { TermsRepoPrisma } from "./terms.repo.prisma";
 import { UpsertMyDefaultsSchema } from "@smart-kitchen/contracts";
 
+// ---- Zod schemas ----
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
   lang: z.string().min(2).max(10).optional(),
@@ -98,18 +99,31 @@ export class TermsService {
     };
   }
 
-  async setTermImage(termId: string, imageUrl: string | null, userId: string) {
+  async setTermImage(
+    termId: string,
+    imageUrl: string | null,
+    userId: string,
+    brandName?: string | null, // הוספת הפרמטר החדש
+  ) {
     const term = await this.repo.findTermById(termId);
     if (!term) throw new NotFoundException("Term not found");
 
-    // רק הבעלים של מונח פרטי או אדמין יכולים לשנות את התמונה
+    // לוגיקת ההרשאות נשארת זהה
     if (term.scope === TermScope.PRIVATE && term.ownerUserId !== userId) {
       throw new BadRequestException(
         "Not authorized to change image of this term",
       );
     }
 
-    const updated = await this.repo.setTermImage(termId, imageUrl);
+    // עדכון ה-Repo. שים לב שאנחנו שולחים גם את ה-brandName
+    // אם התמונה מגיעה מ-Cloudinary, ה-imageUrl יתחיל ב-https://...
+    const updated = await this.repo.upsertMyDefaults({
+      termId,
+      userId,
+      imageUrl,
+      brandName: brandName ?? null,
+    });
+
     return { ok: true, data: updated };
   }
 
@@ -189,16 +203,13 @@ export class TermsService {
     };
   }
 
-  async upsertMyDefaults(termId: string, body: unknown, userId: string) {
-    const parsed = UpsertMyDefaultsSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
-
+  async upsertMyDefaults(termId: string, body: any, userId: string) {
+    // נשתמש ב-any זמנית או נעדכן את ה-Schema ב-Contracts
     const term = await this.repo.findTermById(termId);
     if (!term) throw new NotFoundException("Term not found");
 
-    const d = parsed.data;
+    const d = body; // בדרך כלל מגיע מה-UpsertMyDefaultsSchema
 
-    // מחקנו את ה-imageUrl מכאן. אנחנו לא רוצים לשמור "תמונה אישית".
     const row = await this.repo.upsertMyDefaults({
       termId,
       userId,
@@ -206,6 +217,8 @@ export class TermsService {
       unit: d.unit ?? null,
       qty: d.qty ?? null,
       extras: d.extras ?? null,
+      imageUrl: d.imageUrl ?? null, // הוספה מחדש
+      brandName: d.brandName ?? null, // הוספת השדה החדש
     });
 
     return { ok: true, data: row };

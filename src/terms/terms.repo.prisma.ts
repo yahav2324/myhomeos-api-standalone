@@ -131,6 +131,7 @@ export class TermsRepoPrisma {
             qty: true,
             extras: true,
             imageUrl: true,
+            brandName: true,
           },
         })
       : [];
@@ -258,7 +259,7 @@ export class TermsRepoPrisma {
 
     return uniq;
   }
-  
+
   // ---- Create term + translations ----
   async createTerm(args: {
     scope: TermScope;
@@ -357,10 +358,12 @@ export class TermsRepoPrisma {
   async upsertMyDefaults(args: {
     termId: string;
     userId: string;
-    category: ShoppingCategory | null;
-    unit: ShoppingUnit | null;
-    qty: number | null;
-    extras: Record<string, string> | null;
+    category?: ShoppingCategory | null;
+    unit?: ShoppingUnit | null;
+    qty?: number | null;
+    extras?: Record<string, string> | null;
+    imageUrl?: string | null; // ✅ הוספה
+    brandName?: string | null; // ✅ הוספה
   }) {
     return this.prisma.termUserDefaults.upsert({
       where: {
@@ -370,7 +373,9 @@ export class TermsRepoPrisma {
         category: args.category,
         unit: args.unit,
         qty: args.qty,
-        extras: args.extras,
+        extras: args.extras as any,
+        imageUrl: args.imageUrl, // ✅ עדכון
+        brandName: args.brandName, // ✅ עדכון
       },
       create: {
         userId: args.userId,
@@ -378,7 +383,9 @@ export class TermsRepoPrisma {
         category: args.category,
         unit: args.unit,
         qty: args.qty,
-        extras: args.extras,
+        extras: args.extras as any,
+        imageUrl: args.imageUrl, // ✅ יצירה
+        brandName: args.brandName, // ✅ יצירה
       },
     });
   }

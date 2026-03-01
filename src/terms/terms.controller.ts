@@ -9,10 +9,10 @@ import {
   Query,
   Req,
   UseGuards,
-} from '@nestjs/common';
-import { TermsService } from './terms.service';
-import { JwtAuthGuard } from '../auth/jwt.guard';
-import { AuthGuard } from '@nestjs/passport';
+} from "@nestjs/common";
+import { TermsService } from "./terms.service";
+import { JwtAuthGuard } from "../auth/jwt.guard";
+import { AuthGuard } from "@nestjs/passport";
 
 function getUserIdOrNull(req: any): string | null {
   return req?.user?.id ?? null;
@@ -20,12 +20,12 @@ function getUserIdOrNull(req: any): string | null {
 
 function getUserIdOrThrow(req: any): string {
   const id = getUserIdOrNull(req);
-  if (!id) throw new Error('Unauthorized (missing req.user.id)');
+  if (!id) throw new Error("Unauthorized (missing req.user.id)");
   return id;
 }
 
 @Injectable()
-export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
+export class OptionalJwtAuthGuard extends AuthGuard("jwt") {
   handleRequest(err: any, user: any) {
     // אם אין טוקן / לא תקין – פשוט נחזיר null ולא נזרוק
     if (err) return null;
@@ -37,23 +37,30 @@ export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
 export class TermsController {
   constructor(private readonly terms: TermsService) {}
   @UseGuards(JwtAuthGuard)
-  @Put('/terms/:id/image')
+  @Put("/terms/:id/image")
   async setImage(
-    @Param('id') id: string,
-    @Body() body: { imageUrl: string | null },
+    @Param("id") id: string,
+    // הוספת brandName לגוף הבקשה
+    @Body() body: { imageUrl: string | null; brandName?: string | null },
     @Req() req: any,
   ) {
     const userId = getUserIdOrThrow(req);
-    return this.terms.setTermImage(id, body.imageUrl ?? null, userId);
+    // שליחת שני הפרמטרים ל-Service
+    return this.terms.setTermImage(
+      id,
+      body.imageUrl ?? null,
+      userId,
+      body.brandName ?? null,
+    );
   }
 
   // GET /terms/suggest?q=ri&lang=en&limit=10
   @UseGuards(OptionalJwtAuthGuard)
-  @Get('/terms/suggest')
+  @Get("/terms/suggest")
   async suggest(
-    @Query('q') q: string,
-    @Query('lang') lang: string,
-    @Query('limit') limit: string,
+    @Query("q") q: string,
+    @Query("lang") lang: string,
+    @Query("limit") limit: string,
     @Req() req: any,
   ) {
     const userId = getUserIdOrNull(req); // optional
@@ -62,8 +69,8 @@ export class TermsController {
     return {
       ok: true,
       data: await this.terms.suggest({
-        q: q ?? '',
-        lang: (lang ?? 'en').toLowerCase(),
+        q: q ?? "",
+        lang: (lang ?? "en").toLowerCase(),
         limit: Number.isFinite(lim) ? lim : 10,
         userId,
       }),
@@ -72,23 +79,28 @@ export class TermsController {
 
   // POST /terms  (requires auth)
   @UseGuards(JwtAuthGuard)
-  @Post('/terms')
+  @Post("/terms")
   async create(@Body() body: unknown, @Req() req: any) {
     const userId = getUserIdOrThrow(req);
     return this.terms.create(body, userId);
   }
 
   @UseGuards(JwtAuthGuard)
-  @Put('/terms/:id/my-defaults')
-  async upsertMyDefaults(@Param('id') id: string, @Body() body: unknown, @Req() req: any) {
+  @Put("/terms/:id/my-defaults")
+  async upsertMyDefaults(
+    @Param("id") id: string,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
     const userId = getUserIdOrThrow(req);
+    // כאן ה-body כבר מכיל בדרך כלל את ה-extras, imageUrl ו-brandName
     return this.terms.upsertMyDefaults(id, body, userId);
   }
 
   // POST /terms/:id/vote  (requires auth)
   @UseGuards(JwtAuthGuard)
-  @Post('/terms/:id/vote')
-  async vote(@Param('id') id: string, @Body() body: unknown, @Req() req: any) {
+  @Post("/terms/:id/vote")
+  async vote(@Param("id") id: string, @Body() body: unknown, @Req() req: any) {
     const userId = getUserIdOrThrow(req);
     return this.terms.vote(id, body, userId);
   }

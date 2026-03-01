@@ -244,7 +244,8 @@ model TermUserDefaults {
   qty      Float?
   extras   Json?
   imageUrl String?
-  
+  brandName String?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   term Term @relation(fields: [termId], references: [id], onDelete: Cascade)
 
