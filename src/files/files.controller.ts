@@ -10,6 +10,8 @@ import { JwtAuthGuard } from "../auth/jwt.guard";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { extname } from "path";
+import "multer";
+
 import { v2 as cloudinary } from "cloudinary";
 const toStream = require("buffer-to-stream");
 
