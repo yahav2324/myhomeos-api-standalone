@@ -121,7 +121,7 @@ export class ShoppingService {
     const qty = this.safeQty(body.qty);
     const unit = this.toPrismaUnit(body.unit);
     const category = body.category ?? null;
-    const extra = body.extra ?? null;
+    const extra = body.extra ? { ...body.extra } : {};
     if (extra.brand) delete extra.brand;
     const imageUrlRaw = body?.imageUrl;
     const imageUrl =
@@ -234,7 +234,7 @@ export class ShoppingService {
     }
     if (body.extra !== undefined) {
       const cleanExtra = body.extra ? { ...body.extra } : {};
-      if (cleanExtra.brand) delete cleanExtra.brand; // ✅ וידוא ניקיון
+      if (cleanExtra.brand) delete cleanExtra.brand;
       data.extra = Object.keys(cleanExtra).length ? cleanExtra : null;
     }
 
