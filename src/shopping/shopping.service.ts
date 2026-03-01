@@ -80,13 +80,14 @@ export class ShoppingService {
       select: {
         id: true,
         termId: true,
+        brandName: true,
         text: true,
         qty: true,
         unit: true,
         checked: true,
         category: true,
         extra: true,
-        imageUrl: true, // ✅
+        imageUrl: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -100,12 +101,13 @@ export class ShoppingService {
     listId: string,
     body: {
       text: string;
-      termId?: string; // ✅ חדש
+      termId?: string;
+      brandName?: string | null;
       qty?: number;
       category?: ShoppingCategory;
       unit?: ApiUnit;
       extra?: any;
-      imageUrl?: string | null; // ✅ NEW
+      imageUrl?: string | null;
     },
   ) {
     await this.assertListOwned(householdId, listId);
@@ -114,11 +116,13 @@ export class ShoppingService {
     if (!text) throw new BadRequestException("text is required");
 
     const termId = body.termId ? String(body.termId) : null;
+    const brandName = body.brandName?.trim() || null;
 
     const qty = this.safeQty(body.qty);
     const unit = this.toPrismaUnit(body.unit);
     const category = body.category ?? null;
     const extra = body.extra ?? null;
+    if (extra.brand) delete extra.brand;
     const imageUrlRaw = body?.imageUrl;
     const imageUrl =
       imageUrlRaw === undefined || imageUrlRaw === null
@@ -126,8 +130,7 @@ export class ShoppingService {
         : String(imageUrlRaw).trim() || null;
 
     const normalizedText = normalize(text);
-    const dedupeKey = makeDedupeKey(text, termId, extra);
-
+    const dedupeKey = makeDedupeKey(text, termId, brandName);
     let row;
     try {
       row = await this.prisma.shoppingItem.create({
@@ -135,17 +138,19 @@ export class ShoppingService {
           listId,
           termId,
           imageUrl,
+          brandName,
           text,
           normalizedText,
           dedupeKey,
           qty,
           unit,
           category,
-          extra,
+          extra: Object.keys(extra).length ? extra : null,
         },
         select: {
           id: true,
-          termId: true, // ✅ מומלץ להחזיר ללקוח
+          termId: true,
+          brandName: true,
           text: true,
           qty: true,
           imageUrl: true,
@@ -162,12 +167,13 @@ export class ShoppingService {
       if (e?.code === "P2002") {
         row = await this.prisma.shoppingItem.update({
           where: { listId_dedupeKey: { listId, dedupeKey } }, // דורש unique composite בשם כזה בפריזמה
-          data: { qty, unit, category, extra, imageUrl }, // ✅
+          data: { qty, unit, category, extra, imageUrl, brandName }, // ✅
           select: {
             id: true,
             termId: true,
             text: true,
             imageUrl: true,
+            brandName: true,
             qty: true,
             unit: true,
             checked: true,
@@ -197,6 +203,7 @@ export class ShoppingService {
     body: {
       text?: string;
       qty?: number;
+      brandName?: string | null;
       unit?: ApiUnit;
       category?: ShoppingCategory | null;
       extra?: any | null;
@@ -222,9 +229,13 @@ export class ShoppingService {
     if (body.category !== undefined) {
       data.category = body.category === null ? null : body.category;
     }
-
+    if (body.brandName !== undefined) {
+      data.brandName = body.brandName?.trim() || null;
+    }
     if (body.extra !== undefined) {
-      data.extra = body.extra === null ? null : body.extra;
+      const cleanExtra = body.extra ? { ...body.extra } : {};
+      if (cleanExtra.brand) delete cleanExtra.brand; // ✅ וידוא ניקיון
+      data.extra = Object.keys(cleanExtra).length ? cleanExtra : null;
     }
 
     if (body.imageUrl !== undefined) {
@@ -232,14 +243,27 @@ export class ShoppingService {
       const trimmed = v.trim();
       data.imageUrl = trimmed.length ? trimmed : null;
     }
-
+    // אם עדכנו שם או מותג, צריך לעדכן גם את ה-dedupeKey
+    if (body.text !== undefined || body.brandName !== undefined) {
+      // אנחנו צריכים לשלוף את ה-termId הקיים כדי לחשב מפתח חדש
+      const current = await this.prisma.shoppingItem.findUnique({
+        where: { id: itemId },
+        select: { termId: true, text: true, brandName: true },
+      });
+      data.dedupeKey = makeDedupeKey(
+        body.text ?? current.text,
+        current.termId,
+        body.brandName !== undefined ? body.brandName : current.brandName,
+      );
+    }
     // עדכון הפריט וקבלת הנתונים המעודכנים (כולל termId)
     const row = await this.prisma.shoppingItem.update({
       where: { id: itemId },
       data,
       select: {
         id: true,
-        termId: true, // חיוני ללוגיקה הגלובלית
+        termId: true,
+        brandName: true,
         text: true,
         qty: true,
         unit: true,
@@ -253,19 +277,18 @@ export class ShoppingService {
     if (body.imageUrl && row.termId) {
       const brand = (row.extra as any)?.brand;
 
-      if (brand) {
-        // עדכון המאגר שמשותף לכולם!
+      if (row.imageUrl && row.termId && row.brandName) {
         await this.prisma.termBrandImage.upsert({
           where: {
             termId_brandName: {
               termId: row.termId,
-              brandName: normalize(String(brand)),
+              brandName: normalize(row.brandName),
             },
           },
           update: { imageUrl: row.imageUrl },
           create: {
             termId: row.termId,
-            brandName: normalize(String(brand)),
+            brandName: normalize(row.brandName),
             imageUrl: row.imageUrl,
           },
         });
@@ -369,21 +392,23 @@ export class ShoppingService {
         if (!text) continue;
 
         const termId = it?.termId ? String(it.termId) : null;
+        const brandName =
+          it?.brandName?.trim() || it?.extra?.brand?.trim() || null;
         const qty = this.safeQty(it?.qty);
         const unit = this.toPrismaUnit(it?.unit);
         const checked = Boolean(it?.checked ?? false);
         const category = it?.category ?? null;
-        const extra = it?.extra ?? null;
-
+        const extra = it?.extra ? { ...it.extra } : null;
+        if (extra && extra.brand) delete extra.brand;
         const normalizedText = normalize(text);
-        const dedupeKey = makeDedupeKey(text, termId, extra);
-        // Create with dedupe (same as addItem)
+        const dedupeKey = makeDedupeKey(text, termId, brandName);
         let row: any;
         try {
           row = await this.prisma.shoppingItem.create({
             data: {
               listId: createdList.id,
               termId,
+              brandName,
               text,
               normalizedText,
               dedupeKey,
@@ -430,14 +455,12 @@ function normalize(s: string) {
 function makeDedupeKey(
   text: string,
   termId: string | null,
-  extra?: any,
+  brandName: string | null,
 ): string {
-  // חילוץ המותג מתוך ה-extra
-  const brand = extra?.brand ? normalize(String(extra.brand)) : "no_brand";
-
+  const brand = brandName ? normalize(brandName) : "no_brand";
   if (termId) {
     // עכשיו המפתח הוא שילוב של ה-ID של המוצר והמותג
-    return `${termId}_${brand}`;
+    return `term_${termId}_${brand}`;
   }
-  return `${normalize(text)}_${brand}`;
+  return `text_${normalize(text)}_${brand}`;
 }
