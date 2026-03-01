@@ -175,7 +175,8 @@ export class TermsRepoPrisma {
         t.translations.find((x) => x.lang === "en")?.text ??
         t.translations[0]?.text ??
         m.text;
-
+      const baseExtras = { ...((d?.extras as any) ?? {}) };
+      if (baseExtras.brand) delete baseExtras.brand; // ✅ ניקוי מותג מה-JSON של הבסיס
       // 1. הוספת מוצר הבסיס (למשל: "חלב")
       out.push({
         id: t.id,
@@ -188,7 +189,7 @@ export class TermsRepoPrisma {
         category: d?.category ?? null,
         unit: unitToApi(d?.unit),
         qty: d?.qty ?? null,
-        extras: (d?.extras as any) ?? {},
+        extras: baseExtras ?? {},
         imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
         brandName: d?.brandName ?? null,
       });
@@ -279,7 +280,9 @@ export class TermsRepoPrisma {
     // ✅ מניעת כפולים:
     // אם כבר קיימת תרגום זהה (lang+normalized) לטֶרם גלובלי LIVE/APPROVED -> נחזיר אותו במקום ליצור חדש
     const first = args.translations[0];
-    const brand = args.defaultExtras?.brand; // ✅ חילוץ המותג
+    const brand = args.defaultExtras?.brand;
+    const finalExtras = args.defaultExtras ? { ...args.defaultExtras } : null;
+    if (finalExtras?.brand) delete finalExtras.brand; // ✅ העברת extras נקיים ל-DB
     const existing = await this.prisma.termTranslation.findFirst({
       where: {
         lang: first.lang,
@@ -320,7 +323,7 @@ export class TermsRepoPrisma {
         defaultCategory: args.defaultCategory ?? null,
         defaultUnit: args.defaultUnit ?? null,
         defaultQty: args.defaultQty ?? null,
-        defaultExtras: args.defaultExtras ?? null,
+        defaultExtras: finalExtras ?? null,
         translations: {
           create: translationsToCreate,
         },
