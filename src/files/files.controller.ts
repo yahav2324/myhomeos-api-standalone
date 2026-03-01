@@ -43,7 +43,7 @@ export class FilesController {
       fileFilter,
     }),
   )
-  async uploadImage(@UploadedFile() file?: Express.Multer.File) {
+  async uploadImage(@UploadedFile() file?: any) {
     if (!file) throw new BadRequestException("Missing file");
 
     try {
