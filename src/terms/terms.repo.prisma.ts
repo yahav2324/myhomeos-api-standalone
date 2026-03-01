@@ -196,6 +196,7 @@ export class TermsRepoPrisma {
       // 2. הוספת כל מותג כשורה נפרדת (למשל: "חלב (יטבתה)")
       if (t.brandImages && t.brandImages.length > 0) {
         for (const bi of t.brandImages) {
+          if (d?.brandName === bi.brandName) continue;
           out.push({
             id: t.id,
             text: `${textLang} (${bi.brandName})`,
