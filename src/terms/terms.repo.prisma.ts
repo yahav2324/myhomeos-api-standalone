@@ -207,15 +207,14 @@ export class TermsRepoPrisma {
             category: d?.category ?? null,
             unit: unitToApi(d?.unit),
             qty: d?.qty ?? null,
-            // הזרקת המותג ל-extras כדי שהאפליקציה תדע לשמור אותו
             extras: { ...((d?.extras as any) ?? {}), brand: bi.brandName },
             imageUrl: bi.imageUrl,
+            brandName: bi.brandName,
           });
         }
       }
     }
 
-    // דירוג
     out.sort((a, b) => {
       const aStarts = String(a.normalized ?? "").startsWith(qNorm) ? 1 : 0;
       const bStarts = String(b.normalized ?? "").startsWith(qNorm) ? 1 : 0;
@@ -241,12 +240,10 @@ export class TermsRepoPrisma {
       return String(a.text ?? "").localeCompare(String(b.text ?? ""));
     });
 
-    // הסרת כפילויות סופית (Dedupe) והגבלת כמות (Limit)
     const seen = new Set<string>();
     const uniq: typeof out = [];
 
     for (const x of out) {
-      // compositeKey משולב עם מותג כדי לאפשר הצגת מותגים שונים לאותו מוצר
       const brand = x.brandName || x.extras?.brand || "";
       const compositeKey = `${x.id}_${brand}`;
 
