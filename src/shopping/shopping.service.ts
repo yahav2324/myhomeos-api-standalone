@@ -131,7 +131,21 @@ export class ShoppingService {
         : String(imageUrlRaw).trim() || null;
 
     const normalizedText = normalize(text);
-    const dedupeKey = makeDedupeKey(text, termId, brandName);
+    const dedupeKey = makeDedupeKey(text, termId, brandName); // 1. נתונים לעדכון (בלי הקישור של הרשימה)
+    const updateData: any = {
+      text,
+      normalizedText,
+      dedupeKey,
+      qty,
+      unit,
+      category,
+      brandName,
+      imageUrl,
+      extra: Object.keys(extra).length ? extra : null,
+    };
+    if (termId) {
+      updateData.termId = termId;
+    }
     let row;
     const itemData: any = {
       list: { connect: { id: listId } },
@@ -152,7 +166,10 @@ export class ShoppingService {
 
     try {
       row = await this.prisma.shoppingItem.create({
-        data: itemData,
+        data: {
+          ...updateData,
+          list: { connect: { id: listId } },
+        },
         select: {
           id: true,
           termId: true,
@@ -169,11 +186,10 @@ export class ShoppingService {
         },
       });
     } catch (e: any) {
-      // Prisma unique violation
       if (e?.code === "P2002") {
         row = await this.prisma.shoppingItem.update({
           where: { listId_dedupeKey: { listId, dedupeKey } },
-          data: itemData,
+          data: updateData,
           select: {
             id: true,
             termId: true,
@@ -441,22 +457,25 @@ export class ShoppingService {
         const normalizedText = normalize(text);
         const dedupeKey = makeDedupeKey(text, termId, brandName);
         let row: any;
+        const itemCreateData: any = {
+          listId: createdList.id,
+          brandName,
+          text,
+          normalizedText,
+          dedupeKey,
+          qty,
+          unit,
+          checked,
+          category,
+          extra,
+          imageUrl,
+        };
+        if (termId) {
+          itemCreateData.termId = termId;
+        }
         try {
           row = await this.prisma.shoppingItem.create({
-            data: {
-              listId: createdList.id,
-              termId,
-              brandName,
-              text,
-              normalizedText,
-              dedupeKey,
-              qty,
-              unit,
-              checked,
-              category,
-              extra,
-              imageUrl,
-            },
+            data: itemCreateData,
             select: { id: true },
           });
         } catch (e: any) {
