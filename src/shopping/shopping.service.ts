@@ -425,8 +425,7 @@ export class ShoppingService {
         if (!text) continue;
 
         const termId = it?.termId ? String(it.termId) : null;
-        const brandName =
-          it?.brandName?.trim() || it?.extra?.brand?.trim() || null;
+        const brandName = it?.brandName?.trim() || null;
         const qty = this.safeQty(it?.qty);
         const unit = this.toPrismaUnit(it?.unit);
         const checked = Boolean(it?.checked ?? false);

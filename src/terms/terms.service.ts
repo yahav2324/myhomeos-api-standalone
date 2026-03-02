@@ -22,6 +22,7 @@ const CreateTermBodySchema = z.object({
   category: z.nativeEnum(ShoppingCategory).optional(),
   unit: z.nativeEnum(ShoppingUnit).optional(),
   qty: z.number().positive().optional(),
+  brandName: z.string().optional().nullable(),
   extras: z.record(z.string(), z.string()).optional(),
   imageUrl: z.string().optional().nullable(),
   defaultCategory: z.nativeEnum(ShoppingCategory).optional(),
@@ -159,9 +160,12 @@ export class TermsService {
     const cat = parsed.data.defaultCategory ?? parsed.data.category ?? null;
     const unit = parsed.data.defaultUnit ?? parsed.data.unit ?? null;
     const qty = parsed.data.defaultQty ?? parsed.data.qty ?? null;
+    const brandName = parsed.data.brandName?.trim() || null;
     const extras = parsed.data.defaultExtras ?? parsed.data.extras ?? null;
+    if (brandName) {
+      (extras as any).brand = brandName;
+    }
     const imageUrl = parsed.data.imageUrl ?? null;
-    // ✅ PRIVATE נשאר פרטי ליוצר
     const term = await this.repo.createTerm({
       scope: scope === "PRIVATE" ? TermScope.PRIVATE : TermScope.GLOBAL,
       ownerUserId: scope === "PRIVATE" ? userId : null,
@@ -173,7 +177,7 @@ export class TermsService {
       defaultCategory: cat,
       defaultUnit: unit,
       defaultQty: qty,
-      defaultExtras: extras,
+      defaultExtras: Object.keys(extras).length ? extras : null, // ✅ שליחת ה-Extras המעודכנים
     });
 
     // Auto translate to English (optional)
