@@ -132,23 +132,7 @@ export class ShoppingService {
 
     const normalizedText = normalize(text);
     const dedupeKey = makeDedupeKey(text, termId, brandName); // 1. נתונים לעדכון (בלי הקישור של הרשימה)
-    const updateData: any = {
-      text,
-      normalizedText,
-      dedupeKey,
-      qty,
-      unit,
-      category,
-      brandName,
-      imageUrl,
-      extra: Object.keys(extra).length ? extra : null,
-    };
-    if (termId) {
-      updateData.termId = termId;
-    }
-    let row;
-    const itemData: any = {
-      list: { connect: { id: listId } },
+    const baseData: any = {
       text,
       normalizedText,
       dedupeKey,
@@ -161,13 +145,14 @@ export class ShoppingService {
     };
 
     if (termId) {
-      itemData.term = { connect: { id: termId } };
+      baseData.term = { connect: { id: termId } };
     }
+    let row;
 
     try {
       row = await this.prisma.shoppingItem.create({
         data: {
-          ...updateData,
+          ...baseData,
           list: { connect: { id: listId } },
         },
         select: {
@@ -189,7 +174,7 @@ export class ShoppingService {
       if (e?.code === "P2002") {
         row = await this.prisma.shoppingItem.update({
           where: { listId_dedupeKey: { listId, dedupeKey } },
-          data: updateData,
+          data: baseData,
           select: {
             id: true,
             termId: true,
