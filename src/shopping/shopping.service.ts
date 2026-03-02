@@ -136,7 +136,9 @@ export class ShoppingService {
     try {
       row = await this.prisma.shoppingItem.create({
         data: {
-          listId,
+          list: {
+            connect: { id: listId },
+          },
           termId,
           imageUrl,
           brandName,
