@@ -252,7 +252,7 @@ model ShoppingItem {
   id             String            @id @default(uuid())
   brandName String?
   listId         String
-  termId         String?           @db.Uuid
+  termId         String
   text           String
   normalizedText String?
   dedupeKey      String

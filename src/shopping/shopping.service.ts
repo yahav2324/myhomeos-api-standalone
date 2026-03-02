@@ -109,6 +109,7 @@ export class ShoppingService {
       extra?: any;
       imageUrl?: string | null;
     },
+    userId: string,
   ) {
     await this.assertListOwned(householdId, listId);
 
@@ -166,8 +167,8 @@ export class ShoppingService {
       // Prisma unique violation
       if (e?.code === "P2002") {
         row = await this.prisma.shoppingItem.update({
-          where: { listId_dedupeKey: { listId, dedupeKey } }, // דורש unique composite בשם כזה בפריזמה
-          data: { qty, unit, category, extra, imageUrl, brandName }, // ✅
+          where: { listId_dedupeKey: { listId, dedupeKey } },
+          data: { qty, unit, category, extra, imageUrl, brandName },
           select: {
             id: true,
             termId: true,
@@ -186,6 +187,19 @@ export class ShoppingService {
       } else throw e;
     }
 
+    if (row.termId && row.brandName) {
+      await this.prisma.termUserDefaults.upsert({
+        where: {
+          userId_termId: { userId, termId: row.termId },
+        },
+        update: { brandName: row.brandName },
+        create: {
+          userId,
+          termId: row.termId,
+          brandName: row.brandName,
+        },
+      });
+    }
     // bump list updatedAt
     await this.prisma.shoppingList.update({
       where: { id: listId },
@@ -197,6 +211,7 @@ export class ShoppingService {
   }
 
   async updateItem(
+    userId: string, // ✅ נוסף userId כדי לעדכן העדפות
     householdId: string,
     listId: string,
     itemId: string,
@@ -243,9 +258,8 @@ export class ShoppingService {
       const trimmed = v.trim();
       data.imageUrl = trimmed.length ? trimmed : null;
     }
-    // אם עדכנו שם או מותג, צריך לעדכן גם את ה-dedupeKey
+
     if (body.text !== undefined || body.brandName !== undefined) {
-      // אנחנו צריכים לשלוף את ה-termId הקיים כדי לחשב מפתח חדש
       const current = await this.prisma.shoppingItem.findUnique({
         where: { id: itemId },
         select: { termId: true, text: true, brandName: true },
@@ -256,7 +270,7 @@ export class ShoppingService {
         body.brandName !== undefined ? body.brandName : current.brandName,
       );
     }
-    // עדכון הפריט וקבלת הנתונים המעודכנים (כולל termId)
+
     const row = await this.prisma.shoppingItem.update({
       where: { id: itemId },
       data,
@@ -274,28 +288,45 @@ export class ShoppingService {
       },
     });
 
-    if (body.imageUrl && row.termId) {
-      const brand = (row.extra as any)?.brand;
-
-      if (row.imageUrl && row.termId && row.brandName) {
-        await this.prisma.termBrandImage.upsert({
-          where: {
-            termId_brandName: {
-              termId: row.termId,
-              brandName: normalize(row.brandName),
-            },
-          },
-          update: { imageUrl: row.imageUrl },
-          create: {
-            termId: row.termId,
-            brandName: normalize(row.brandName),
-            imageUrl: row.imageUrl,
-          },
-        });
-      }
+    // ✅ עדכון העדפות משתמש (עבור ה-Suggest)
+    if (row.termId && row.brandName) {
+      await this.prisma.termUserDefaults.upsert({
+        where: {
+          userId_termId: { userId, termId: row.termId },
+        },
+        update: {
+          brandName: row.brandName,
+          category: row.category,
+          imageUrl: row.imageUrl,
+        },
+        create: {
+          userId,
+          termId: row.termId,
+          brandName: row.brandName,
+          category: row.category,
+          imageUrl: row.imageUrl,
+        },
+      });
     }
 
-    // עדכון זמן עדכון הרשימה
+    // ✅ עדכון תמונת מותג גלובלית (אם הועלתה תמונה)
+    if (row.imageUrl && row.termId && row.brandName) {
+      await this.prisma.termBrandImage.upsert({
+        where: {
+          termId_brandName: {
+            termId: row.termId,
+            brandName: normalize(row.brandName),
+          },
+        },
+        update: { imageUrl: row.imageUrl },
+        create: {
+          termId: row.termId,
+          brandName: normalize(row.brandName),
+          imageUrl: row.imageUrl,
+        },
+      });
+    }
+
     await this.prisma.shoppingList.update({
       where: { id: listId },
       data: { updatedAt: new Date() },
