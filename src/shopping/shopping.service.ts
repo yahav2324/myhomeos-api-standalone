@@ -493,7 +493,6 @@ export class ShoppingService {
         itemIdMap[itemLocalId] = row.id;
       }
 
-      // bump list
       await this.prisma.shoppingList.update({
         where: { id: createdList.id },
         data: { updatedAt: new Date() },
