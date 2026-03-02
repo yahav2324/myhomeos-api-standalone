@@ -146,10 +146,10 @@ export class ShoppingService {
       extra: Object.keys(extra).length ? extra : null,
     };
 
-    // ✅ רק אם באמת יש termId, נוסיף אותו לאובייקט
     if (termId) {
-      itemData.termId = termId;
+      itemData.term = { connect: { id: termId } };
     }
+
     try {
       row = await this.prisma.shoppingItem.create({
         data: itemData,
