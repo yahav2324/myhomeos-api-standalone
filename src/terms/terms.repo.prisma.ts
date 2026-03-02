@@ -85,6 +85,7 @@ export class TermsRepoPrisma {
           approvedByAdmin: true,
           translations: { select: { lang: true, text: true } },
           brandImages: true,
+          defaultExtras: true,
         },
       },
     };
@@ -170,13 +171,16 @@ export class TermsRepoPrisma {
       const c = countsByTerm.get(t.id) ?? { up: 0, down: 0 };
       const d = args.userId ? myDefaultsByTerm.get(t.id) : null;
 
+      const globalExtras = (t.defaultExtras as any) ?? {};
+      const globalBrand = globalExtras.brand ?? null;
+      const finalBrandName = d?.brandName ?? globalBrand;
       const textLang =
         t.translations.find((x) => x.lang === args.lang)?.text ??
         t.translations.find((x) => x.lang === "en")?.text ??
         t.translations[0]?.text ??
         m.text;
-      const baseExtras = { ...((d?.extras as any) ?? {}) };
-      if (baseExtras.brand) delete baseExtras.brand; // ✅ ניקוי מותג מה-JSON של הבסיס
+      const baseExtras = { ...((d?.extras as any) ?? globalExtras) };
+      if (baseExtras.brand) delete baseExtras.brand;
       // 1. הוספת מוצר הבסיס (למשל: "חלב")
       out.push({
         id: t.id,
@@ -186,12 +190,12 @@ export class TermsRepoPrisma {
         upCount: c.up,
         downCount: c.down,
         myVote: args.userId ? (myVoteByTerm.get(t.id) ?? null) : null,
-        category: d?.category ?? null,
-        unit: unitToApi(d?.unit),
-        qty: d?.qty ?? null,
+        category: d?.category ?? (t as any).defaultCategory ?? null,
+        unit: unitToApi(d?.unit ?? (t as any).defaultUnit),
+        qty: d?.qty ?? (t as any).defaultQty ?? null,
         extras: baseExtras ?? {},
         imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
-        brandName: d?.brandName ?? null,
+        brandName: finalBrandName,
       });
 
       // 2. הוספת כל מותג כשורה נפרדת (למשל: "חלב (יטבתה)")
