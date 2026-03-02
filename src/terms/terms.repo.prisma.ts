@@ -260,7 +260,6 @@ export class TermsRepoPrisma {
     return uniq;
   }
 
-  // ---- Create term + translations ----
   async createTerm(args: {
     scope: TermScope;
     ownerUserId?: string | null;
@@ -277,12 +276,8 @@ export class TermsRepoPrisma {
       source: string;
     }>;
   }) {
-    // ✅ מניעת כפולים:
-    // אם כבר קיימת תרגום זהה (lang+normalized) לטֶרם גלובלי LIVE/APPROVED -> נחזיר אותו במקום ליצור חדש
     const first = args.translations[0];
     const brand = args.defaultExtras?.brand;
-    const finalExtras = args.defaultExtras ? { ...args.defaultExtras } : null;
-    if (finalExtras?.brand) delete finalExtras.brand; // ✅ העברת extras נקיים ל-DB
     const existing = await this.prisma.termTranslation.findFirst({
       where: {
         lang: first.lang,
@@ -301,8 +296,6 @@ export class TermsRepoPrisma {
     }
 
     const translationsToCreate = args.translations.map((t) => {
-      // אם יש מותג, אנחנו מצמידים אותו ל-normalized כדי למנוע את חסימת ה-DB
-      // השתמשתי כאן ב-localNormalize כדי שלא תקבל שגיאת undefined
       const finalNormalized = brand
         ? `${t.normalized}_${localNormalize(String(brand))}`
         : t.normalized;
@@ -323,7 +316,7 @@ export class TermsRepoPrisma {
         defaultCategory: args.defaultCategory ?? null,
         defaultUnit: args.defaultUnit ?? null,
         defaultQty: args.defaultQty ?? null,
-        defaultExtras: finalExtras ?? null,
+        defaultExtras: args.defaultExtras ?? null,
         translations: {
           create: translationsToCreate,
         },

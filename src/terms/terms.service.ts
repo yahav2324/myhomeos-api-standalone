@@ -161,7 +161,7 @@ export class TermsService {
     const unit = parsed.data.defaultUnit ?? parsed.data.unit ?? null;
     const qty = parsed.data.defaultQty ?? parsed.data.qty ?? null;
     const brandName = parsed.data.brandName?.trim() || null;
-    const extras = parsed.data.defaultExtras ?? parsed.data.extras ?? null;
+    const extras = parsed.data.defaultExtras ?? parsed.data.extras ?? {};
     if (brandName) {
       (extras as any).brand = brandName;
     }
