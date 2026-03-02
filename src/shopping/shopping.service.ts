@@ -195,11 +195,14 @@ export class ShoppingService {
     if (row.termId && row.brandName) {
       await this.prisma.termUserDefaults.upsert({
         where: {
-          userId_termId: { userId, termId: row.termId },
+          userId_termId: {
+            userId: typeof userId === "string" ? userId : (userId as any).id,
+            termId: row.termId,
+          },
         },
         update: { brandName: row.brandName },
         create: {
-          userId,
+          userId: typeof userId === "string" ? userId : (userId as any).id,
           termId: row.termId,
           brandName: row.brandName,
         },
