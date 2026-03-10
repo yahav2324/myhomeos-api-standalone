@@ -265,8 +265,8 @@ export class TermsRepoPrisma {
     const uniq: typeof out = [];
 
     for (const x of out) {
-      const displayBrand = x.brandName || x.extras?.brand || "";
-      const compositeKey = `${x.id}_${x.text}_${displayBrand}`;
+      const brand = x.brandName || x.extras?.brand || "";
+      const compositeKey = `${x.id}_${brand}`;
 
       if (seen.has(compositeKey)) continue;
 
