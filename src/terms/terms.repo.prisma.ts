@@ -250,8 +250,8 @@ export class TermsRepoPrisma {
     const uniq: typeof out = [];
 
     for (const x of out) {
-      const brand = x.brandName || x.extras?.brand || "";
-      const compositeKey = `${x.id}_${brand}`;
+      const displayBrand = x.brandName || x.extras?.brand || "no_brand";
+      const compositeKey = `${x.id}_${x.text}_${displayBrand}`;
 
       if (seen.has(compositeKey)) continue;
 
@@ -309,7 +309,7 @@ export class TermsRepoPrisma {
       normalized: targetNormalized,
       source: t.source,
     }));
-    
+
     return this.prisma.term.create({
       data: {
         scope: args.scope,
