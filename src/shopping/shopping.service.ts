@@ -1,4 +1,3 @@
-// apps/api/src/shopping/shopping.service.ts
 import {
   BadRequestException,
   Injectable,
@@ -131,7 +130,7 @@ export class ShoppingService {
         : String(imageUrlRaw).trim() || null;
 
     const normalizedText = normalize(text);
-    const dedupeKey = makeDedupeKey(text, termId, brandName); // 1. נתונים לעדכון (בלי הקישור של הרשימה)
+    const dedupeKey = makeDedupeKey(text, termId, brandName);
     const baseData: any = {
       text,
       normalizedText,
@@ -194,16 +193,18 @@ export class ShoppingService {
     }
 
     if (row.termId && row.brandName) {
+      const actualUserId =
+        typeof userId === "string" ? userId : (userId as any).id;
       await this.prisma.termUserDefaults.upsert({
         where: {
           userId_termId: {
-            userId: typeof userId === "string" ? userId : (userId as any).id,
+            userId: actualUserId,
             termId: row.termId,
           },
         },
         update: { brandName: row.brandName },
         create: {
-          userId: typeof userId === "string" ? userId : (userId as any).id,
+          userId: actualUserId,
           termId: row.termId,
           brandName: row.brandName,
         },
@@ -220,7 +221,7 @@ export class ShoppingService {
   }
 
   async updateItem(
-    userId: string, // ✅ נוסף userId כדי לעדכן העדפות
+    userId: string,
     householdId: string,
     listId: string,
     itemId: string,
@@ -297,11 +298,12 @@ export class ShoppingService {
       },
     });
 
-    // ✅ עדכון העדפות משתמש (עבור ה-Suggest)
     if (row.termId && row.brandName) {
+      const actualUserId =
+        typeof userId === "string" ? userId : (userId as any).id;
       await this.prisma.termUserDefaults.upsert({
         where: {
-          userId_termId: { userId, termId: row.termId },
+          userId_termId: { userId: actualUserId, termId: row.termId },
         },
         update: {
           brandName: row.brandName,
@@ -309,7 +311,7 @@ export class ShoppingService {
           imageUrl: row.imageUrl,
         },
         create: {
-          userId,
+          userId: actualUserId,
           termId: row.termId,
           brandName: row.brandName,
           category: row.category,
