@@ -282,10 +282,14 @@ export class TermsRepoPrisma {
   }) {
     const first = args.translations[0];
     const brand = args.defaultExtras?.brand;
+    const targetNormalized = brand
+      ? `${first.normalized}_${localNormalize(String(brand))}`
+      : first.normalized;
+
     const existing = await this.prisma.termTranslation.findFirst({
       where: {
         lang: first.lang,
-        normalized: first.normalized,
+        normalized: targetNormalized,
         term: {
           scope: args.scope,
           status: { in: [TermStatus.LIVE, TermStatus.APPROVED] },
@@ -299,18 +303,13 @@ export class TermsRepoPrisma {
       if (found) return found as any;
     }
 
-    const translationsToCreate = args.translations.map((t) => {
-      const finalNormalized = brand
-        ? `${t.normalized}_${localNormalize(String(brand))}`
-        : t.normalized;
-
-      return {
-        lang: t.lang,
-        text: t.text,
-        normalized: finalNormalized,
-        source: t.source,
-      };
-    });
+    const translationsToCreate = args.translations.map((t) => ({
+      lang: t.lang,
+      text: t.text,
+      normalized: targetNormalized,
+      source: t.source,
+    }));
+    
     return this.prisma.term.create({
       data: {
         scope: args.scope,
