@@ -172,12 +172,12 @@ export class TermsRepoPrisma {
 
       const globalExtras = (t.defaultExtras as any) ?? {};
       const globalBrand = globalExtras.brand ?? null;
+      const myPreferredBrand = d?.brandName ?? globalBrand;
+
       const finalBrandName = d?.brandName ?? globalBrand;
       const textLang =
         t.translations.find((x) => x.lang === args.lang)?.text ??
-        t.translations.find((x) => x.lang === "en")?.text ??
-        t.translations[0]?.text ??
-        m.text;
+        t.translations[0]?.text;
       const baseExtras = { ...((d?.extras as any) ?? globalExtras) };
       if (baseExtras.brand) delete baseExtras.brand;
       // 1. הוספת מוצר הבסיס (למשל: "חלב")
@@ -194,10 +194,26 @@ export class TermsRepoPrisma {
         qty: d?.qty ?? (t as any).defaultQty ?? null,
         extras: baseExtras ?? {},
         imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
-        brandName: finalBrandName,
+        brandName: null,
       });
 
-      // 2. הוספת כל מותג כשורה נפרדת (למשל: "חלב (יטבתה)")
+      if (myPreferredBrand) {
+        out.push({
+          id: t.id,
+          text: `${textLang} (${myPreferredBrand})`,
+          normalized: `${m.normalized}_${myPreferredBrand.toLowerCase()}`,
+          status: t.status,
+          upCount: c.up,
+          downCount: c.down,
+          category: d?.category ?? null,
+          unit: unitToApi(d?.unit),
+          qty: d?.qty ?? null,
+          extras: { ...((d?.extras as any) ?? {}), brand: myPreferredBrand },
+          imageUrl: d?.imageUrl ?? t.imageUrl ?? null,
+          brandName: myPreferredBrand,
+        });
+      }
+
       if (t.brandImages && t.brandImages.length > 0) {
         for (const bi of t.brandImages) {
           if (d?.brandName === bi.brandName) continue;
