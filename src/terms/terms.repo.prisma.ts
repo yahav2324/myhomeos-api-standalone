@@ -90,14 +90,13 @@ export class TermsRepoPrisma {
       },
     };
 
-    // שלב 1: startsWith
     const starts = await this.prisma.termTranslation.findMany({
       where: {
         lang: args.lang,
         normalized: { startsWith: qNorm },
         term: baseTermWhere as any,
       },
-      take: args.limit * 4,
+      take: 100,
       include: termInclude,
       orderBy: [{ normalized: "asc" }],
     });
@@ -112,7 +111,7 @@ export class TermsRepoPrisma {
               normalized: { contains: qNorm },
               term: baseTermWhere as any,
             },
-            take: args.limit * 12,
+            take: 100,
             include: termInclude,
             orderBy: [{ normalized: "asc" }],
           })
@@ -250,7 +249,7 @@ export class TermsRepoPrisma {
     const uniq: typeof out = [];
 
     for (const x of out) {
-      const displayBrand = x.brandName || x.extras?.brand || "no_brand";
+      const displayBrand = x.brandName || x.extras?.brand || "";
       const compositeKey = `${x.id}_${x.text}_${displayBrand}`;
 
       if (seen.has(compositeKey)) continue;
