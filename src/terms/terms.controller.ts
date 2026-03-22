@@ -27,7 +27,6 @@ function getUserIdOrThrow(req: any): string {
 @Injectable()
 export class OptionalJwtAuthGuard extends AuthGuard("jwt") {
   handleRequest(err: any, user: any) {
-    // אם אין טוקן / לא תקין – פשוט נחזיר null ולא נזרוק
     if (err) return null;
     return user ?? null;
   }
@@ -40,12 +39,10 @@ export class TermsController {
   @Put("/terms/:id/image")
   async setImage(
     @Param("id") id: string,
-    // הוספת brandName לגוף הבקשה
     @Body() body: { imageUrl: string | null; brandName?: string | null },
     @Req() req: any,
   ) {
     const userId = getUserIdOrThrow(req);
-    // שליחת שני הפרמטרים ל-Service
     return this.terms.setTermImage(
       id,
       body.imageUrl ?? null,
@@ -54,7 +51,6 @@ export class TermsController {
     );
   }
 
-  // GET /terms/suggest?q=ri&lang=en&limit=10
   @UseGuards(OptionalJwtAuthGuard)
   @Get("/terms/suggest")
   async suggest(
@@ -77,7 +73,33 @@ export class TermsController {
     };
   }
 
-  // POST /terms  (requires auth)
+  @UseGuards(OptionalJwtAuthGuard)
+  @Get("terms")
+  async get(
+    @Req() req: any,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+    @Query("q") q?: string,
+  ) {
+    const userId = getUserIdOrNull(req);
+
+    const lim = limit ? parseInt(limit, 10) : 20;
+    const off = offset ? parseInt(offset, 10) : 0;
+    const search = q?.trim();
+
+    const result = await this.terms.findAll({
+      limit: Number.isFinite(lim) ? lim : 20,
+      offset: Number.isFinite(off) ? off : 0,
+      search,
+      userId,
+    });
+
+    return {
+      ok: true,
+      ...result,
+    };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post("/terms")
   async create(@Body() body: unknown, @Req() req: any) {
@@ -97,7 +119,6 @@ export class TermsController {
     return this.terms.upsertMyDefaults(id, body, userId);
   }
 
-  // POST /terms/:id/vote  (requires auth)
   @UseGuards(JwtAuthGuard)
   @Post("/terms/:id/vote")
   async vote(@Param("id") id: string, @Body() body: unknown, @Req() req: any) {

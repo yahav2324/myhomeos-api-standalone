@@ -100,6 +100,27 @@ export class TermsService {
     };
   }
 
+  async findAll(params: {
+    limit: number;
+    offset: number;
+    search?: string;
+    userId?: string;
+  }) {
+    const { limit, offset, search } = params;
+
+    const where = search
+      ? {
+          translations: {
+            some: {
+              text: { contains: search, mode: "insensitive" as const },
+            },
+          },
+        }
+      : {};
+
+    return this.repo.findAll({ limit, offset, where });
+  }
+
   async setTermImage(
     termId: string,
     imageUrl: string | null,

@@ -86,7 +86,6 @@ export class ShoppingController {
     return this.shopping.addItem(householdId, listId, body, req?.user);
   }
 
-  // ✅ Update item (text/qty/unit/category/extra/checked)
   @Patch("lists/:listId/items/:itemId")
   updateItem(
     @Req() req: any,

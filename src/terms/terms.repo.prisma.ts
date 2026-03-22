@@ -279,11 +279,26 @@ export class TermsRepoPrisma {
     return uniq;
   }
 
+  async findAll(params: { limit: number; offset: number; where: any }) {
+    const [items, total] = await Promise.all([
+      this.prisma.term.findMany({
+        where: params.where,
+        take: params.limit,
+        skip: params.offset,
+        orderBy: { createdAt: "desc" },
+        include: { translations: true },
+      }),
+      this.prisma.term.count({ where: params.where }),
+    ]);
+
+    return { items, total };
+  }
+
   async createTerm(args: {
     scope: TermScope;
     ownerUserId?: string | null;
     status: TermStatus;
-    imageUrl?: string | null; // ✅ הוסף
+    imageUrl?: string | null;
     defaultCategory?: ShoppingCategory | null;
     defaultUnit?: ShoppingUnit | null;
     defaultQty?: number | null;
