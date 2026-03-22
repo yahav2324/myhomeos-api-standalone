@@ -460,4 +460,10 @@ export class TermsRepoPrisma {
       data: { status, approvedAt: approvedAt ?? undefined },
     });
   }
+
+  async deleteTerm(termId: string) {
+    return this.prisma.term.delete({
+      where: { id: termId },
+    });
+  }
 }

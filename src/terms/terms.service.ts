@@ -14,7 +14,6 @@ import { z } from "zod";
 import { TermsRepoPrisma } from "./terms.repo.prisma";
 import { UpsertMyDefaultsSchema } from "@smart-kitchen/contracts";
 
-// ---- Zod schemas ----
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
   lang: z.string().min(2).max(10).optional(),
@@ -304,5 +303,13 @@ export class TermsService {
         thresholds: cfg,
       },
     };
+  }
+
+  async delete(termId: string, userId: string) {
+    const term = await this.repo.findTermById(termId);
+    if (!term) throw new NotFoundException("המונח לא נמצא");
+
+    await this.repo.deleteTerm(termId);
+    return { ok: true };
   }
 }

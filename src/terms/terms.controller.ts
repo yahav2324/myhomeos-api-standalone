@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Injectable,
   Param,
@@ -124,5 +125,12 @@ export class TermsController {
   async vote(@Param("id") id: string, @Body() body: unknown, @Req() req: any) {
     const userId = getUserIdOrThrow(req);
     return this.terms.vote(id, body, userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete("/terms/:id")
+  async remove(@Param("id") id: string, @Req() req: any) {
+    const userId = getUserIdOrThrow(req);
+    return this.terms.delete(id, userId);
   }
 }
