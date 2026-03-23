@@ -117,7 +117,7 @@ export class ShoppingService {
 
     const termId = body.termId ? String(body.termId) : null;
     const brandName = body.brandName?.trim() || null;
-
+    const isExternal = termId && termId.startsWith("off_");
     const qty = this.safeQty(body.qty);
     const unit = this.toPrismaUnit(body.unit);
     const category = body.category ?? null;
@@ -143,8 +143,10 @@ export class ShoppingService {
       extra: Object.keys(extra).length ? extra : null,
     };
 
-    if (termId) {
+    if (termId && !isExternal) {
       baseData.term = { connect: { id: termId } };
+    } else {
+      baseData.termId = null;
     }
     let row;
 
@@ -414,7 +416,6 @@ export class ShoppingService {
       const listLocalId = String(l?.listLocalId ?? "");
       if (!listLocalId) continue;
 
-      // Create new list in this household (simple). If you want dedupe by name, you can.
       const createdList = await this.prisma.shoppingList.create({
         data: { householdId, name },
         select: { id: true },
@@ -457,9 +458,14 @@ export class ShoppingService {
           extra,
           imageUrl,
         };
-        if (termId) {
-          itemCreateData.termId = termId;
+
+        const isExternal = termId && termId.startsWith("off_");
+        if (termId && !isExternal) {
+          itemCreateData.term = { connect: { id: termId } };
+        } else {
+          itemCreateData.termId = null;
         }
+        
         try {
           row = await this.prisma.shoppingItem.create({
             data: itemCreateData,
