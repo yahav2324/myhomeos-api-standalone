@@ -75,7 +75,7 @@ export class TermsController {
     };
   }
 
-  @Post("/external-selection")
+  @Post("/terms/external-selection")
   @UseGuards(OptionalJwtAuthGuard)
   async handleExternalSelection(@Body() body: any, @Req() req: any) {
     const userId = getUserIdOrNull(req);
