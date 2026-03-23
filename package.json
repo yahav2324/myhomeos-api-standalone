@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.1",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
@@ -23,9 +24,10 @@
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.11",
+    "@openfoodfacts/openfoodfacts-nodejs": "^2.0.0-alpha.29",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^6.19.2",
-    "axios": "^1.13.4",
+    "axios": "^1.13.6",
     "buffer-to-stream": "^1.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",

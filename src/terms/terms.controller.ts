@@ -58,7 +58,8 @@ export class TermsController {
     @Query("q") q: string,
     @Query("lang") lang: string,
     @Query("limit") limit: string,
-    @Req() req: any,
+    @Req()
+    req: any,
   ) {
     const userId = getUserIdOrNull(req); // optional
     const lim = limit ? Number(limit) : 10;
@@ -72,6 +73,14 @@ export class TermsController {
         userId,
       }),
     };
+  }
+
+  @Post("/external-selection")
+  @UseGuards(OptionalJwtAuthGuard)
+  async handleExternalSelection(@Body() body: any, @Req() req: any) {
+    const userId = getUserIdOrNull(req);
+
+    return this.terms.handleExternalSelection(body, userId);
   }
 
   @UseGuards(OptionalJwtAuthGuard)

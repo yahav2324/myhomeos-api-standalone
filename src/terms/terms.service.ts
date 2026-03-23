@@ -12,7 +12,9 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 import { TermsRepoPrisma } from "./terms.repo.prisma";
-import { UpsertMyDefaultsSchema } from "@smart-kitchen/contracts";
+import { HttpService } from "@nestjs/axios";
+import { firstValueFrom } from "rxjs";
+import { OpenFoodFacts } from "@openfoodfacts/openfoodfacts-nodejs";
 
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
@@ -71,7 +73,16 @@ async function translateToEnglish(
 
 @Injectable()
 export class TermsService {
-  constructor(private readonly repo: TermsRepoPrisma) {}
+  private readonly offSDK: OpenFoodFacts;
+  constructor(
+    private readonly repo: TermsRepoPrisma,
+    private readonly httpService: HttpService,
+  ) {
+    this.offSDK = new OpenFoodFacts(fetch, {
+      country: "il",
+      language: "he",
+    });
+  }
 
   async getCatalogConfig(): Promise<CatalogConfig> {
     const row = await this.repo.getSystemConfig("catalog");
@@ -146,24 +157,6 @@ export class TermsService {
     });
 
     return { ok: true, data: updated };
-  }
-
-  async suggest(args: {
-    q: string;
-    lang: string;
-    limit: number;
-    userId?: string | null;
-  }) {
-    const cfg = await this.getCatalogConfig();
-
-    const qTrim = args.q.trim();
-    if (qTrim.length < cfg.minQueryChars) return [];
-
-    const qNorm = normalizeText(qTrim);
-    const lang = (args.lang || "en").trim().toLowerCase();
-    const limit = Math.min(Math.max(args.limit || 10, 1), 30);
-
-    return this.repo.suggest({ qNorm, lang, limit, userId: args.userId });
   }
 
   async create(body: unknown, userId: string) {
@@ -311,5 +304,167 @@ export class TermsService {
 
     await this.repo.deleteTerm(termId);
     return { ok: true };
+  }
+
+  async suggest(args: {
+    q: string;
+    lang: string;
+    limit: number;
+    userId?: string | null;
+  }) {
+    const cfg = await this.getCatalogConfig();
+    const qTrim = args.q.trim();
+    if (qTrim.length < cfg.minQueryChars) return [];
+
+    const qNorm = normalizeText(qTrim);
+    const lang = (args.lang || "he").toLowerCase();
+    const limit = Math.min(Math.max(args.limit || 10, 1), 30);
+
+    const [localResults, externalResults] = await Promise.all([
+      this.repo.suggest({ qNorm, lang, limit, userId: args.userId }),
+      this.fetchFromOFF(qTrim, limit),
+    ]);
+
+    const localNames = new Set(
+      localResults.map((item) =>
+        normalizeText(item.translations[0]?.text || ""),
+      ),
+    );
+
+    const combined = [
+      ...localResults,
+      ...externalResults.filter((ext) => {
+        const extName = normalizeText(ext.translations[0]?.text || "");
+        return !localNames.has(extName);
+      }),
+    ];
+
+    return combined.slice(0, limit);
+  }
+
+  async handleExternalSelection(externalData: any, userId: string | null) {
+    const response = { ok: true, message: "Sync started in background" };
+
+    const effectiveUserId = userId || "system-admin";
+
+    this.saveExternalToLocal(externalData, effectiveUserId).catch((err) => {
+      console.error("Background sync failed for MyHomeOS:", err);
+    });
+
+    return response;
+  }
+
+  private async saveExternalToLocal(data: any, userId: string) {
+    const text = data.translations?.[0]?.text || "מוצר ללא שם";
+    const brandName = data.defaultExtras?.brand || null;
+    const imageUrl = data.imageUrl || null;
+    const category = data.defaultCategory || "OTHER";
+
+    const qNorm = normalizeText(text);
+    const existing = await this.repo.suggest({ qNorm, lang: "he", limit: 1 });
+    if (existing.length > 0) return existing[0];
+
+    return this.create(
+      {
+        text,
+        brandName,
+        imageUrl,
+        defaultCategory: category,
+        scope: "GLOBAL",
+      },
+      userId,
+    );
+  }
+
+  private mapExternalCategory(tags: string[]): ShoppingCategory {
+    if (!tags || tags.length === 0) return "OTHER";
+
+    // נאחד את כל הטאגים למחרוזת אחת לבדיקה מהירה
+    const t = tags.join(",").toLowerCase();
+
+    // בדיקה לפי סדר עדיפויות (מהספציפי לכללי)
+    if (t.includes("vegetables")) return "VEGETABLES";
+    if (t.includes("fruits")) return "FRUITS";
+    if (t.includes("dairy") || t.includes("cheeses") || t.includes("yogurts"))
+      return "DAIRY";
+    if (t.includes("meat") || t.includes("fishes") || t.includes("seafood"))
+      return "MEAT_FISH";
+    if (t.includes("bakery") || t.includes("breads") || t.includes("pastries"))
+      return "BAKERY";
+    if (
+      t.includes("breakfast cereals") ||
+      t.includes("pasta") ||
+      t.includes("rice") ||
+      t.includes("flours")
+    )
+      return "PANTRY";
+    if (
+      t.includes("spices") ||
+      t.includes("condiments") ||
+      t.includes("sauces")
+    )
+      return "SPICES";
+    if (t.includes("frozen")) return "FROZEN";
+    if (t.includes("beverages") || t.includes("drinks") || t.includes("juices"))
+      return "DRINKS";
+    if (
+      t.includes("snacks") ||
+      t.includes("confectioneries") ||
+      t.includes("biscuits")
+    )
+      return "SNACKS";
+    if (t.includes("cleaning") || t.includes("detergents")) return "CLEANING";
+    if (t.includes("baby foods")) return "BABY";
+    if (t.includes("pharmacy") || t.includes("hygiene")) return "PHARM";
+
+    return "OTHER";
+  }
+
+  private async fetchFromOFF(q: string, limit: number) {
+    try {
+      const response = await this.offSDK.apiv2.search({
+        // @ts-ignore
+        search_terms: q,
+        page_size: limit,
+      } as any);
+
+      if (!response.data?.products) return [];
+
+      return response.data.products.map((p: any) => ({
+        id: `off_${p.code}`,
+        imageUrl: p.image_url || p.image_front_url || null,
+        scope: "GLOBAL",
+        status: "LIVE",
+        approvedAt: new Date(),
+        translations: [
+          {
+            id: `trans_off_${p.code}`,
+            text:
+              p.product_name_he ||
+              p.product_name ||
+              p.generic_name_he ||
+              "מוצר ללא שם",
+            lang: p.product_name_he ? "he" : "en",
+            normalized: normalizeText(
+              p.product_name_he || p.product_name || "",
+            ),
+            source: "EXTERNAL",
+            createdAt: new Date(),
+            termId: `off_${p.code}`,
+          },
+        ],
+        defaultCategory: this.mapExternalCategory(p.categories_tags),
+        defaultUnit: null,
+        defaultQty: 1,
+        defaultExtras: {
+          barcode: p.code,
+          brand: p.brands,
+          isExternal: true,
+        },
+      }));
+    } catch (error) {
+      console.error("OFF API Error:", error.message);
+      return [];
+    }
   }
 }
