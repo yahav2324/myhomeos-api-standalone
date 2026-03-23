@@ -49,7 +49,8 @@ const DEFAULT_CATALOG_CONFIG: CatalogConfig = {
 };
 
 // ---- helpers ----
-function normalizeText(s: string) {
+function normalizeText(s: any): string {
+  if (typeof s !== "string") return "";
   return s.trim().toLowerCase();
 }
 
@@ -306,7 +307,7 @@ export class TermsService {
     userId?: string | null;
   }) {
     const cfg = await this.getCatalogConfig();
-    const qTrim = args.q.trim();
+    const qTrim = (args.q || "").trim();
     if (qTrim.length < cfg.minQueryChars) return [];
 
     const qNorm = normalizeText(qTrim);
@@ -319,18 +320,31 @@ export class TermsService {
     ]);
 
     const localNames = new Set(
-      localResults.map((item) =>
-        normalizeText(item.translations[0]?.text || ""),
-      ),
+      localResults
+        .filter((item) => item?.translations?.length > 0)
+        .map((item) => normalizeText(item.translations[0].text)),
     );
 
-    const combined = [
+    // 1. איחוד הרשימות
+    let combined = [
       ...localResults,
       ...externalResults.filter((ext) => {
-        const extName = normalizeText(ext.translations[0]?.text || "");
+        const extText = ext.translations?.[0]?.text;
+        if (!extText) return false;
+        const extName = normalizeText(extText);
         return !localNames.has(extName);
       }),
     ];
+
+    // 2. מיון: תמונות קודם
+    combined = combined.sort((a, b) => {
+      const hasPhotoA = !!a.imageUrl;
+      const hasPhotoB = !!b.imageUrl;
+
+      if (hasPhotoA && !hasPhotoB) return -1;
+      if (!hasPhotoA && hasPhotoB) return 1;
+      return 0;
+    });
 
     return combined.slice(0, limit);
   }
@@ -342,43 +356,46 @@ export class TermsService {
       const response = await firstValueFrom(
         this.httpService.get(url, {
           headers: { "User-Agent": "MyHomeOS/1.0 (NestJS Backend)" },
+          timeout: 3000,
         }),
       );
 
       const products = response.data?.products || [];
 
-      return products.map((p: any) => ({
-        id: `off_${p.code}`,
-        imageUrl: p.image_url || p.image_front_url || null,
-        scope: "GLOBAL",
-        status: "LIVE",
-        approvedAt: new Date(),
-        translations: [
-          {
-            id: `trans_off_${p.code}`,
-            text:
-              p.product_name_he ||
-              p.product_name ||
-              p.generic_name_he ||
-              "מוצר ללא שם",
-            lang: p.product_name_he ? "he" : "en",
-            normalized: normalizeText(
-              p.product_name_he || p.product_name || "",
-            ),
-            source: "EXTERNAL",
-            createdAt: new Date(),
-            termId: `off_${p.code}`,
+      return products.map((p: any) => {
+        const mainName =
+          p.product_name_he ||
+          p.product_name ||
+          p.generic_name_he ||
+          "מוצר ללא שם";
+
+        return {
+          id: `off_${p.code}`,
+          imageUrl: p.image_url || p.image_front_url || null,
+          scope: "GLOBAL",
+          status: "LIVE",
+          approvedAt: new Date(),
+          translations: [
+            {
+              id: `trans_off_${p.code}`,
+              text: mainName,
+              lang: p.product_name_he ? "he" : "en",
+              normalized: normalizeText(mainName),
+              source: "EXTERNAL",
+              createdAt: new Date(),
+              termId: `off_${p.code}`,
+            },
+          ],
+          defaultCategory: this.mapExternalCategory(p.categories_tags),
+          defaultUnit: null,
+          defaultQty: 1,
+          defaultExtras: {
+            barcode: p.code,
+            brand: p.brands,
+            isExternal: true,
           },
-        ],
-        defaultCategory: this.mapExternalCategory(p.categories_tags),
-        defaultUnit: null,
-        defaultQty: 1,
-        defaultExtras: {
-          barcode: p.code,
-          brand: p.brands,
-          isExternal: true,
-        },
-      }));
+        };
+      });
     } catch (error) {
       console.error("OFF API Error:", error.message);
       return [];
