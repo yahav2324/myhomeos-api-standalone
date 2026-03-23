@@ -24,7 +24,6 @@
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.1.11",
-    "@openfoodfacts/openfoodfacts-nodejs": "^2.0.0-alpha.29",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^6.19.2",
     "axios": "^1.13.6",

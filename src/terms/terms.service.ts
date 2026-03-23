@@ -14,7 +14,6 @@ import { z } from "zod";
 import { TermsRepoPrisma } from "./terms.repo.prisma";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
-import { OpenFoodFacts } from "@openfoodfacts/openfoodfacts-nodejs";
 
 const CreateTermBodySchema = z.object({
   text: z.string().min(1).max(80),
@@ -73,16 +72,10 @@ async function translateToEnglish(
 
 @Injectable()
 export class TermsService {
-  private readonly offSDK: OpenFoodFacts;
   constructor(
     private readonly repo: TermsRepoPrisma,
     private readonly httpService: HttpService,
-  ) {
-    this.offSDK = new OpenFoodFacts(fetch, {
-      country: "il",
-      language: "he",
-    });
-  }
+  ) {}
 
   async getCatalogConfig(): Promise<CatalogConfig> {
     const row = await this.repo.getSystemConfig("catalog");
@@ -342,6 +335,56 @@ export class TermsService {
     return combined.slice(0, limit);
   }
 
+  private async fetchFromOFF(q: string, limit: number) {
+    try {
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=${limit}&cc=il`;
+
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: { "User-Agent": "MyHomeOS/1.0 (NestJS Backend)" },
+        }),
+      );
+
+      const products = response.data?.products || [];
+
+      return products.map((p: any) => ({
+        id: `off_${p.code}`,
+        imageUrl: p.image_url || p.image_front_url || null,
+        scope: "GLOBAL",
+        status: "LIVE",
+        approvedAt: new Date(),
+        translations: [
+          {
+            id: `trans_off_${p.code}`,
+            text:
+              p.product_name_he ||
+              p.product_name ||
+              p.generic_name_he ||
+              "מוצר ללא שם",
+            lang: p.product_name_he ? "he" : "en",
+            normalized: normalizeText(
+              p.product_name_he || p.product_name || "",
+            ),
+            source: "EXTERNAL",
+            createdAt: new Date(),
+            termId: `off_${p.code}`,
+          },
+        ],
+        defaultCategory: this.mapExternalCategory(p.categories_tags),
+        defaultUnit: null,
+        defaultQty: 1,
+        defaultExtras: {
+          barcode: p.code,
+          brand: p.brands,
+          isExternal: true,
+        },
+      }));
+    } catch (error) {
+      console.error("OFF API Error:", error.message);
+      return [];
+    }
+  }
+
   async handleExternalSelection(externalData: any, userId: string | null) {
     const response = { ok: true, message: "Sync started in background" };
 
@@ -418,53 +461,5 @@ export class TermsService {
     if (t.includes("pharmacy") || t.includes("hygiene")) return "PHARM";
 
     return "OTHER";
-  }
-
-  private async fetchFromOFF(q: string, limit: number) {
-    try {
-      const response = await this.offSDK.apiv2.search({
-        // @ts-ignore
-        search_terms: q,
-        page_size: limit,
-      } as any);
-
-      if (!response.data?.products) return [];
-
-      return response.data.products.map((p: any) => ({
-        id: `off_${p.code}`,
-        imageUrl: p.image_url || p.image_front_url || null,
-        scope: "GLOBAL",
-        status: "LIVE",
-        approvedAt: new Date(),
-        translations: [
-          {
-            id: `trans_off_${p.code}`,
-            text:
-              p.product_name_he ||
-              p.product_name ||
-              p.generic_name_he ||
-              "מוצר ללא שם",
-            lang: p.product_name_he ? "he" : "en",
-            normalized: normalizeText(
-              p.product_name_he || p.product_name || "",
-            ),
-            source: "EXTERNAL",
-            createdAt: new Date(),
-            termId: `off_${p.code}`,
-          },
-        ],
-        defaultCategory: this.mapExternalCategory(p.categories_tags),
-        defaultUnit: null,
-        defaultQty: 1,
-        defaultExtras: {
-          barcode: p.code,
-          brand: p.brands,
-          isExternal: true,
-        },
-      }));
-    } catch (error) {
-      console.error("OFF API Error:", error.message);
-      return [];
-    }
   }
 }
